@@ -66,7 +66,7 @@ Each task below is scoped to land as its own PR into `main`, reviewed and tested
 | 1 | Repo scaffolding: project structure, tooling, lint/format config, README | — | Done |
 | 2 | Backend skeleton: API server, health check endpoint, `.env` config loading | 1 | Done |
 | 3 | Frontend skeleton: base app shell, topic input form (no backend wiring yet) | 1 | Done |
-| 4 | Planner component: OpenAI-backed search-plan generation + unit tests | 2 | Not started |
+| 4 | Planner component: OpenAI-backed search-plan generation + unit tests | 2 | Done |
 | 5 | Searcher component: search API integration, source retrieval/normalization + unit tests | 2 | Not started |
 | 6 | Writer component: OpenAI-backed report synthesis (summary, insights, chart data) + unit tests | 4, 5 | Not started |
 | 7 | Emailer component: simulated send + success status + report made available for download + unit tests | 2 | Not started |
