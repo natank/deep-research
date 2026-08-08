@@ -8,6 +8,7 @@ dependencies = [
     "fastapi[standard]",
     "openai",
     "pydantic-settings",
+    "tavily-python>=0.7.27",
 ]
 
 [dependency-groups]
