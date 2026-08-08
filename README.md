@@ -11,7 +11,7 @@ See [`docs/purpose.md`](docs/purpose.md) for the project brief and [`docs/master
 
 ## Setup
 
-1. Copy `.env.example` to `.env` at the repo root and fill in `OPENAI_API_KEY`.
+1. Copy `.env.example` to `.env` at the repo root and fill in `OPENAI_API_KEY` and `TAVILY_API_KEY`.
 2. Backend:
    ```sh
    cd backend
