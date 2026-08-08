@@ -7,6 +7,7 @@ class Settings(BaseSettings):
     openai_api_key: str = ""
     openai_model: str = "gpt-5.4-mini"
     tavily_api_key: str = ""
+    reports_dir: str = "reports"
 
 
 settings = Settings()

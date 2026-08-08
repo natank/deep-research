@@ -53,9 +53,9 @@ To be finalized as its own design pass, but starting shape:
   - **Planner** — takes the topic, calls OpenAI (`gpt-5.4-mini`) to produce a structured search plan (list of queries/subtopics).
   - **Searcher** — executes the planned queries against the Tavily search API, retrieves and normalizes source articles/data (deduped by URL, ranked by relevance score, capped at 8 sources).
   - **Writer** — calls OpenAI (`gpt-5.4-mini`) to synthesize retrieved content into a report (summary, key insights, chart data).
-  - **Emailer** — simulates sending the report (e.g. logs it / writes to a file), returns a success status to the frontend, and exposes the report for download in place of real delivery.
+  - **Emailer** — simulates sending the report by rendering it to Markdown and writing it to a per-run file (logged as a "sent" event), returns a success status to the frontend, and exposes the report file for download in place of real delivery.
 - **Data flow:** UI → orchestrator/API → Planner → Searcher → Writer → Emailer → UI notification → report download.
-- **Open decisions to resolve at design time:** chart library, whether pipeline runs synchronously or with progress streaming (e.g. polling/SSE/websockets), report download format (PDF/Markdown/HTML).
+- **Open decisions to resolve at design time:** chart library, whether pipeline runs synchronously or with progress streaming (e.g. polling/SSE/websockets).
 
 ## 4. Implementation Plan (task breakdown)
 
@@ -69,7 +69,7 @@ Each task below is scoped to land as its own PR into `main`, reviewed and tested
 | 4 | Planner component: OpenAI-backed search-plan generation + unit tests | 2 | Done |
 | 5 | Searcher component: search API integration, source retrieval/normalization + unit tests | 2 | Done |
 | 6 | Writer component: OpenAI-backed report synthesis (summary, insights, chart data) + unit tests | 4, 5 | Done |
-| 7 | Emailer component: simulated send + success status + report made available for download + unit tests | 2 | Not started |
+| 7 | Emailer component: simulated send + success status + report made available for download + unit tests | 2 | Done |
 | 8 | Orchestration: wire Planner → Searcher → Writer → Emailer behind a single API endpoint | 4, 5, 6, 7 | Not started |
 | 9 | Frontend integration: submit topic, show progress, render report, show "email sent" notification, offer report download | 3, 8 | Not started |
 | 10 | Data visualization: pick chart type(s) and render in report view | 6, 9 | Not started |
