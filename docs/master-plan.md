@@ -72,7 +72,7 @@ Each task below is scoped to land as its own PR into `main`, reviewed and tested
 | 6 | Writer component: OpenAI-backed report synthesis (summary, insights, chart data) + unit tests | 4, 5 | Done |
 | 7 | Emailer component: simulated send + success status + report made available for download + unit tests | 2 | Done |
 | 8 | Orchestration: wire Planner → Searcher → Writer → Emailer behind a single API endpoint | 4, 5, 6, 7 | Done |
-| 9 | Frontend integration: submit topic, show progress, render report, show "email sent" notification, offer report download | 3, 8 | Not started |
+| 9 | Frontend integration: submit topic, show progress, render report, show "email sent" notification, offer report download | 3, 8 | Done |
 | 10 | Data visualization: pick chart type(s) and render in report view | 6, 9 | Not started |
 | 11 | Error handling & UX polish: loading states, failure messages, basic input validation | 9 | Not started |
 | 12 | End-to-end test pass + README usage docs | all above | Not started |
