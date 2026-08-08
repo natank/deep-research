@@ -75,7 +75,7 @@ Each task below is scoped to land as its own PR into `main`, reviewed and tested
 | 9 | Frontend integration: submit topic, show progress, render report, show "email sent" notification, offer report download | 3, 8 | Done |
 | 10 | Data visualization: pick chart type(s) and render in report view | 6, 9 | Done |
 | 11 | Error handling & UX polish: loading states, failure messages, basic input validation | 9 | Done |
-| 12 | End-to-end test pass + README usage docs | all above | Not started |
+| 12 | End-to-end test pass + README usage docs | all above | Done |
 
 ## 5. Execution
 
