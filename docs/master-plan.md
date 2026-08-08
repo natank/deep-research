@@ -68,7 +68,7 @@ Each task below is scoped to land as its own PR into `main`, reviewed and tested
 | 3 | Frontend skeleton: base app shell, topic input form (no backend wiring yet) | 1 | Done |
 | 4 | Planner component: OpenAI-backed search-plan generation + unit tests | 2 | Done |
 | 5 | Searcher component: search API integration, source retrieval/normalization + unit tests | 2 | Done |
-| 6 | Writer component: OpenAI-backed report synthesis (summary, insights, chart data) + unit tests | 4, 5 | Not started |
+| 6 | Writer component: OpenAI-backed report synthesis (summary, insights, chart data) + unit tests | 4, 5 | Done |
 | 7 | Emailer component: simulated send + success status + report made available for download + unit tests | 2 | Not started |
 | 8 | Orchestration: wire Planner → Searcher → Writer → Emailer behind a single API endpoint | 4, 5, 6, 7 | Not started |
 | 9 | Frontend integration: submit topic, show progress, render report, show "email sent" notification, offer report download | 3, 8 | Not started |
