@@ -6,6 +6,9 @@ import type { ResearchResult } from './types'
 
 type RunState = 'idle' | 'loading' | 'error'
 
+const TOPIC_MAX_LENGTH = 200
+const REQUEST_TIMEOUT_MS = 120_000
+
 function App() {
   const [topic, setTopic] = useState('')
   const [runState, setRunState] = useState<RunState>('idle')
@@ -15,17 +18,25 @@ function App() {
   async function handleSubmit(event: FormEvent<HTMLFormElement>) {
     event.preventDefault()
     const trimmedTopic = topic.trim()
-    if (!trimmedTopic) return
+    if (!trimmedTopic) {
+      setError('Please enter a research topic.')
+      setRunState('error')
+      return
+    }
 
     setRunState('loading')
     setError(null)
     setResult(null)
+
+    const controller = new AbortController()
+    const timeout = setTimeout(() => controller.abort(), REQUEST_TIMEOUT_MS)
 
     try {
       const response = await fetch('/research', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ topic: trimmedTopic }),
+        signal: controller.signal,
       })
 
       if (!response.ok) {
@@ -37,10 +48,20 @@ function App() {
       setResult(data)
       setRunState('idle')
     } catch (err) {
-      setError(err instanceof Error ? err.message : 'Research failed, please try again')
+      const message =
+        err instanceof DOMException && err.name === 'AbortError'
+          ? 'Research is taking longer than expected. Please try again.'
+          : err instanceof Error
+            ? err.message
+            : 'Research failed, please try again'
+      setError(message)
       setRunState('error')
+    } finally {
+      clearTimeout(timeout)
     }
   }
+
+  const showPlaceholder = !result && runState === 'idle'
 
   return (
     <div className="app">
@@ -50,7 +71,7 @@ function App() {
       </header>
 
       <main>
-        <form className="topic-form" onSubmit={handleSubmit}>
+        <form className="topic-form" onSubmit={handleSubmit} noValidate>
           <label htmlFor="topic">Research topic</label>
           <div className="topic-form-row">
             <input
@@ -59,23 +80,26 @@ function App() {
               type="text"
               placeholder="e.g. The state of solid-state batteries in 2026"
               value={topic}
-              onChange={(event) => setTopic(event.target.value)}
+              onChange={(event) => setTopic(event.target.value.slice(0, TOPIC_MAX_LENGTH))}
               autoComplete="off"
               disabled={runState === 'loading'}
-              required
+              maxLength={TOPIC_MAX_LENGTH}
+              aria-describedby="topic-hint"
             />
-            <button
-              type="submit"
-              disabled={topic.trim().length === 0 || runState === 'loading'}
-            >
+            <button type="submit" disabled={runState === 'loading'}>
+              {runState === 'loading' && <span className="spinner" aria-hidden="true" />}
               {runState === 'loading' ? 'Researching…' : 'Research'}
             </button>
           </div>
+          <span id="topic-hint" className="topic-hint">
+            {topic.length}/{TOPIC_MAX_LENGTH}
+          </span>
         </form>
 
         {runState === 'loading' && (
           <section className="status-banner status-loading" aria-live="polite">
-            <p>Planning searches, gathering sources, and writing your report…</p>
+            <span className="spinner" aria-hidden="true" />
+            <p>Planning searches, gathering sources, and writing your report. This can take up to a minute…</p>
           </section>
         )}
 
@@ -126,7 +150,7 @@ function App() {
           </section>
         )}
 
-        {!result && runState !== 'loading' && (
+        {showPlaceholder && (
           <section className="report-placeholder" aria-live="polite">
             <p>Your report will appear here once a run completes.</p>
           </section>

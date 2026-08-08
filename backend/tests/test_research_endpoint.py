@@ -3,7 +3,7 @@ from unittest.mock import patch
 from fastapi.testclient import TestClient
 
 from app.emailer.schemas import EmailResult
-from app.main import app
+from app.main import TOPIC_MAX_LENGTH, app
 from app.orchestrator import ResearchResult
 from app.searcher.schemas import SourceArticle
 from app.writer.schemas import ChartData, ChartDataPoint, Report
@@ -42,6 +42,19 @@ def test_research_rejects_empty_topic() -> None:
     response = client.post("/research", json={"topic": "   "})
 
     assert response.status_code == 422
+
+
+def test_research_rejects_topic_over_max_length() -> None:
+    response = client.post("/research", json={"topic": "a" * (TOPIC_MAX_LENGTH + 1)})
+
+    assert response.status_code == 422
+
+
+def test_research_accepts_topic_at_max_length() -> None:
+    with patch("app.main.run_research", return_value=_result()):
+        response = client.post("/research", json={"topic": "a" * TOPIC_MAX_LENGTH})
+
+    assert response.status_code == 200
 
 
 def test_research_returns_502_when_pipeline_fails() -> None:

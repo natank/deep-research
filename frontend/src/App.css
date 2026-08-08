@@ -26,19 +26,22 @@ main {
 }
 
 .topic-form {
-  max-width: 640px;
-}
-
-.topic-form {
   display: flex;
   flex-direction: column;
   gap: 8px;
+  max-width: 640px;
   text-align: left;
 
   label {
     font-size: 14px;
     color: var(--text);
   }
+}
+
+.topic-hint {
+  align-self: flex-end;
+  font-size: 12px;
+  color: var(--text);
 }
 
 .topic-form-row {
@@ -76,6 +79,9 @@ main {
   background: var(--accent-bg);
   cursor: pointer;
   transition: border-color 0.3s;
+  display: inline-flex;
+  align-items: center;
+  gap: 8px;
 
   &:hover:not(:disabled) {
     border-color: var(--accent-border);
@@ -87,6 +93,22 @@ main {
   &:disabled {
     opacity: 0.5;
     cursor: not-allowed;
+  }
+}
+
+.spinner {
+  display: inline-block;
+  width: 14px;
+  height: 14px;
+  border: 2px solid currentcolor;
+  border-right-color: transparent;
+  border-radius: 50%;
+  animation: spin 0.6s linear infinite;
+}
+
+@keyframes spin {
+  to {
+    transform: rotate(360deg);
   }
 }
 
@@ -111,6 +133,9 @@ main {
 .status-loading {
   border: 1px solid var(--border);
   color: var(--text);
+  display: flex;
+  align-items: center;
+  gap: 12px;
 }
 
 .status-error {

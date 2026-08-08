@@ -5,12 +5,14 @@ from pathlib import Path
 from fastapi import FastAPI, HTTPException
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import FileResponse
-from pydantic import BaseModel
+from pydantic import BaseModel, Field
 
 from app.config import settings
 from app.orchestrator import ResearchResult, run_research
 
 logger = logging.getLogger(__name__)
+
+TOPIC_MAX_LENGTH = 200
 
 app = FastAPI(title="Deep Research API")
 
@@ -23,7 +25,7 @@ app.add_middleware(
 
 
 class ResearchRequest(BaseModel):
-    topic: str
+    topic: str = Field(max_length=TOPIC_MAX_LENGTH)
 
 
 @app.get("/health")
