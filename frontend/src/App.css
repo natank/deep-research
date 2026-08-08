@@ -93,3 +93,89 @@ main {
   text-align: center;
   color: var(--text);
 }
+
+.status-banner {
+  border-radius: 8px;
+  padding: 16px 20px;
+  text-align: left;
+
+  p {
+    margin: 0;
+  }
+}
+
+.status-loading {
+  border: 1px solid var(--border);
+  color: var(--text);
+}
+
+.status-error {
+  border: 1px solid #e5484d;
+  color: #e5484d;
+  background: rgba(229, 72, 77, 0.08);
+}
+
+.status-success {
+  border: 1px solid var(--accent-border);
+  background: var(--accent-bg);
+  color: var(--text-h);
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+}
+
+.download-link {
+  color: var(--accent);
+  font-weight: 500;
+  text-decoration: none;
+
+  &:hover {
+    text-decoration: underline;
+  }
+}
+
+.report {
+  display: flex;
+  flex-direction: column;
+  gap: 16px;
+  text-align: left;
+
+  h2,
+  h3 {
+    margin: 0;
+  }
+
+  ul {
+    margin: 0;
+    padding-left: 20px;
+  }
+}
+
+.summary {
+  color: var(--text);
+}
+
+.chart-points,
+.sources {
+  list-style: none;
+  padding: 0;
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+}
+
+.chart-points li {
+  display: flex;
+  justify-content: space-between;
+  border-bottom: 1px solid var(--border);
+  padding: 4px 0;
+}
+
+.sources li a {
+  color: var(--accent);
+  text-decoration: none;
+
+  &:hover {
+    text-decoration: underline;
+  }
+}

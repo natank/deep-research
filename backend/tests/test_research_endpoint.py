@@ -5,6 +5,7 @@ from fastapi.testclient import TestClient
 from app.emailer.schemas import EmailResult
 from app.main import app
 from app.orchestrator import ResearchResult
+from app.searcher.schemas import SourceArticle
 from app.writer.schemas import ChartData, ChartDataPoint, Report
 
 client = TestClient(app)
@@ -18,6 +19,7 @@ def _result() -> ResearchResult:
             insights=["insight"],
             chart=ChartData(title="chart", points=[ChartDataPoint(label="a", value=1)]),
         ),
+        sources=[SourceArticle(title="Title", url="https://a.com", content="content", score=0.5)],
         email=EmailResult(
             status="sent", recipient="demo-user@example.com", report_id="id", filename="id.md"
         ),
@@ -32,6 +34,7 @@ def test_research_returns_report_and_email_status() -> None:
     assert response.status_code == 200
     body = response.json()
     assert body["report"]["topic"] == "topic"
+    assert body["sources"][0]["url"] == "https://a.com"
     assert body["email"]["status"] == "sent"
 
 

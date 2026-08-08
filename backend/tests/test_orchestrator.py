@@ -46,4 +46,5 @@ def test_run_research_wires_components_in_order() -> None:
     mock_write.assert_called_once_with("topic", sources)
     mock_send.assert_called_once_with(report)
     assert result.report == report
+    assert result.sources == sources
     assert result.email == email
