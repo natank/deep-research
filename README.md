@@ -25,10 +25,33 @@ See [`docs/purpose.md`](docs/purpose.md) for the project brief and [`docs/master
    npm run dev
    ```
 
+## Usage
+
+1. With both servers running, open the frontend (printed by `npm run dev`, typically http://localhost:5173).
+2. Enter a research topic (up to 200 characters) and click **Research**.
+3. The backend runs the pipeline synchronously — planning searches, retrieving up to 8 sources via Tavily, and synthesizing a report with OpenAI. This typically takes 30-60 seconds; a loading indicator shows progress.
+4. On success, the page shows:
+   - A narrative summary and key insights
+   - A bar chart visualizing one quantitative aspect of the research
+   - The list of source articles used, with links
+   - A simulated "email sent" notification
+   - A **Download report** link to the generated Markdown file
+5. On failure (e.g. a search or LLM call errors out), the UI shows an error message instead of crashing; you can retry with the same or a different topic.
+
 ## Testing
 
+Backend:
 ```sh
 cd backend
 uv run pytest
 uv run ruff check .
 ```
+
+Frontend:
+```sh
+cd frontend
+npm run lint
+npm run build
+```
+
+A manual end-to-end pass (real topic through the full UI, verifying report quality and all UI states) should also be run before release; see `docs/master-plan.md` section 6 for the testing approach.
