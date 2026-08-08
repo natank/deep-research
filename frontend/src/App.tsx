@@ -1,6 +1,7 @@
 import { useState } from 'react'
 import type { FormEvent } from 'react'
 import './App.css'
+import ReportChart from './ReportChart'
 import type { ResearchResult } from './types'
 
 type RunState = 'idle' | 'loading' | 'error'
@@ -110,14 +111,7 @@ function App() {
             </ul>
 
             <h3>{result.report.chart.title}</h3>
-            <ul className="chart-points">
-              {result.report.chart.points.map((point) => (
-                <li key={point.label}>
-                  <span>{point.label}</span>
-                  <span>{point.value}</span>
-                </li>
-              ))}
-            </ul>
+            <ReportChart chart={result.report.chart} />
 
             <h3>Sources</h3>
             <ul className="sources">
