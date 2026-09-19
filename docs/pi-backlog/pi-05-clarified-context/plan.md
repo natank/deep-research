@@ -15,36 +15,48 @@ plan and report, so that the results reflect the scope I specified.**
 ### In scope
 
 - Extend `POST /research` to accept optional structured clarification answers.
-- Validate topic and answer context on the server using bounded, typed models.
+- Tighten the shared PI-01 `ClarificationAnswer` and `ResearchContext` models
+  so HTTP and orchestrator validation are the same boundary.
 - Preserve topic-only requests for existing clients.
-- Pass `ResearchContext` through the code-driven orchestrator.
-- Incorporate clarification context into Planner and Writer user messages.
-- Update the frontend to submit the collected answers.
-- Keep question and answer content untrusted and delimited in LLM prompts.
-- Add backend and frontend tests proving that context changes the planner/writer
-  inputs and remains safe.
+- Pass one validated `ResearchContext` through the code-driven orchestrator.
+- Put topic and Q&A into Planner and Writer **user** messages via a shared
+  delimiter helper; keep system prompts static.
+- Use answers as research **scope** for Planner queries and Writer focus, not
+  as sources or as Tavily search strings.
+- Update the frontend adapter to send the frozen session topic and collected
+  answers only to `/research`.
+- Align `/research` error and log handling with `/clarify` so failures do not
+  echo topic, questions, or answers.
+- Add backend and frontend tests for validation, prompt placement, and
+  compatibility.
 
 ### Out of scope
 
 - Generating clarification questions (PI-03).
-- Adding persistent clarification sessions, signed decision tokens, or user
-  accounts.
-- Proving that submitted question text came from the latest `/clarify`
-  response; without session storage, it is untrusted client data.
-- Agent orchestration (PI-06 through PI-09).
-- Changing Searcher behavior or Tavily integration.
-- Changing the report schema or adding new report sections.
-- Adding public-deployment authentication, rate limiting, or abuse controls.
+- Persistent clarification sessions, signed decision tokens, or user
+  accounts. Submitted question text is untrusted client data, not a proof
+  that `/clarify` produced it.
+- Guaranteeing that the model will ignore user-role instructions. Delimiters
+  and a static system prompt constrain placement; they do not prove
+  obedience.
+- Agent orchestration or LLM tools (PI-06 through PI-09).
+- Changing Searcher/Tavily integration, search/source caps, or passing raw
+  answers into `TavilyClient.search`.
+- Changing the report schema or Markdown-rendering the report in the UI.
+- Authentication, rate limiting, or public-deployment abuse controls. This
+  remains a local demo with the same unauthenticated cost residual as
+  `/clarify`.
 
 ## Documentation rigor
 
 **Required level: high.**
 
-This story crosses the public API, frontend state, orchestration, and multiple
-LLM prompt boundaries. It also introduces user-controlled text into prompts
-and must preserve topic-only clients. The plan therefore requires explicit
-request validation, compatibility behavior, trust-boundary rules, prompt
-construction tests, generic error handling, and end-to-end contract coverage.
+This story crosses the public API, frontend state, orchestration, and two
+LLM prompt boundaries. It introduces additional untrusted strings into
+Planner and Writer and must keep topic-only clients working. The plan
+therefore requires one shared validation model, an explicit delimiter
+helper, a narrowed injection residual, generic errors, and tests for
+placement rather than for model obedience.
 
 ## Requirements
 
@@ -65,104 +77,151 @@ construction tests, generic error handling, and end-to-end contract coverage.
 }
 ```
 
-`clarification_answers` is optional and defaults to an empty list. The existing
-topic-only request remains valid and must produce the same pipeline behavior.
-Unknown request fields must not change server behavior or expose provider
-configuration.
+`clarification_answers` is optional and defaults to an empty list. A
+topic-only body remains valid and must produce the same pipeline behavior.
+The request model must not include `model`, `client`, `limits`, or
+`api_key`. Extra fields are ignored (`extra="ignore"`) and must not change
+server behavior.
 
-### Server validation
+The HTTP handler builds a `ResearchContext` from the body and calls
+`run_research(context)`. It must not parse answers separately and then call
+a topic-string overload that skips those checks.
 
-Before any LLM, Tavily, or report call:
+### Shared validation
 
-- Reuse PI-01 topic rules: strip, reject empty, and cap topic length at 200.
-- Validate question ids against
-  `^[a-z0-9][a-z0-9_-]{0,31}$`.
-- Require unique question ids.
-- Require between zero and `ExecutionLimits.max_clarification_questions` (3 by
-  default) answers.
-- Cap question and answer text at 200 and 500 characters respectively; reject
-  over-long values rather than truncating.
-- Reject blank question or answer text.
-- Do not accept model names, API clients, API keys, limits, or provider
-  settings from the request body.
-- Preserve answer order as submitted.
+Put the HTTP bounds on the shared PI-01 models in
+`app.research.schemas`, not only on a local request DTO:
 
-The server cannot attest that question text came from `/clarify`; treat both
-question and answer strings as untrusted data. The validation and prompt
-delimiters are the security boundary for this story.
+- Topic: strip, reject empty, max 200 characters (already on
+  `ResearchContext`).
+- `question_id`: `^[a-z0-9][a-z0-9_-]{0,31}$`.
+- Unique ids within the list; preserve submitted order.
+- `clarification_answers` length 0–`ExecutionLimits.max_clarification_questions`
+  (default 3). Use that default; do not read limits from the request.
+- `question` max 200 characters; `answer` max 500; strip; reject blanks;
+  reject rather than truncate.
+- Reject C0 control characters (other than ordinary spaces) and the
+  delimiter closer used by the prompt helper (see below).
+
+Invalid context returns HTTP 422 **before** any OpenAI, Tavily, or report
+I/O. Internal `run_research("topic")` compatibility, if kept, must
+normalize to `ResearchContext(topic=...)` so it cannot carry unchecked
+answers.
+
+Question and answer strings are untrusted even when the UI copied them from
+`/clarify`. Forged Q&A is an accepted residual without session storage; an
+attacker who can POST `/research` can already set the topic.
 
 ### Orchestration behavior
 
-The code path must pass one `ResearchContext` through:
+Pass one `ResearchContext` through:
 
-1. Planner;
-2. Searcher using the resulting plan;
-3. Writer;
-4. Emailer.
+1. Planner — topic plus Q&A as scope for search queries;
+2. Searcher — existing `search_plan(plan)` only; do not pass answers,
+   question text, or topic as Tavily queries;
+3. Writer — same context as **scope** (audience, timeframe, geography).
+   Answers are not sources and must not introduce unsourced claims. Ground
+   claims in retrieved sources as today;
+4. Emailer — unchanged report type.
 
-Planner behavior must use the topic and answers to create a more targeted
-search plan. Writer behavior must use the same context when synthesizing the
-report. Searcher and Emailer need no semantic changes, but their callers must
-continue to receive the existing plan, sources, and report types.
+Searcher and Emailer keep their current types and caps (`MAX_SOURCES`,
+queries per plan). Planner query strings remain model output executed by
+code, subject to the existing query cap.
 
-Topic-only calls must remain supported for internal callers and existing tests,
-either through a compatibility wrapper or a default `ResearchContext`.
+The report `topic` field stays the original topic string.
 
-### Prompt safety
+### Prompt construction
 
-- Keep Planner and Writer system prompts static.
-- Put topic, question text, and answer text only in delimited user-message
-  sections clearly marked as untrusted research context.
-- Never interpolate clarified text into a system prompt.
-- Do not render or execute answer text as HTML, Markdown instructions, URLs, or
-  tool arguments.
-- Do not include raw context, provider bodies, API keys, or exception causes in
-  caller-facing errors or logs.
-- Prompt-injection text in a topic, question, or answer must remain data and
-  must not override system instructions or enable tools.
+Use one formatting helper for Planner and Writer user messages so labels
+and delimiters stay testable:
+
+- System prompts remain static string constants. Do not interpolate topic,
+  question, or answer into them. Writer’s system prompt should state that
+  clarification answers constrain scope and are not sources.
+- User message contains:
+  - `<untrusted-research-topic>…</untrusted-research-topic>`
+  - `<untrusted-clarification>…</untrusted-clarification>` with numbered
+    `question_id` / `question` / `answer` lines when the list is non-empty
+  - Writer only: a separate sources block, not nested inside the
+    clarification tags
+- If topic, question, or answer contains a closer tag (`</untrusted-…>`)
+  or C0 controls, reject at validation time rather than splicing it into
+  the prompt.
+- Do not put untrusted strings in `href`, tool arguments, or Searcher
+  calls.
+
+These rules guarantee **placement**: untrusted text is only in the user
+message, Searcher never sees raw answers, and search/source caps stay in
+code. They do **not** guarantee the model will ignore user-role
+instructions. That model-following residual is accepted for this demo.
+
+### Errors and logs
+
+Match `/clarify`, and **change** the current research handler that logs the
+topic:
+
+- Validation → 422 with Pydantic/HTTP detail that does not include provider
+  bodies or exception causes.
+- Pipeline/provider failure → 502 `"Research failed, please try again"`
+  with `from None`.
+- Logs record exception class (and optionally status) only. Do not log
+  topic, questions, answers, raw model output, or `__cause__`.
+- The frontend must not stringify a structured FastAPI `detail` object into
+  the banner.
+
+Secrets pasted into answers may still appear in the generated report and
+`reports/*.md` because the product uses that scope. Do not add a secret
+scanner in this story; do not add them to logs.
+
+### Frontend submit path
+
+`requestResearch` sends the **frozen session topic** and, when present, the
+held `ClarificationAnswer[]` to `/research` only. It never sends answers to
+`/clarify` and never sends `model`, `client`, `limits`, or `api_key`.
+
+The no-question path may omit `clarification_answers` or send `[]`. The
+answered path sends the structured list. Duplicate in-flight submits stay
+disabled. Report UI keeps rendering summary, insights, and sources as text
+nodes.
 
 ## Proposed design
 
-Extend the backend request model with an optional list of PI-01
-`ClarificationAnswer` values, adding field constraints needed for the HTTP
-boundary if they are not already present in the shared model. Build a
-`ResearchContext` after request validation and pass it to
-`run_research(context)`.
+Tighten `ClarificationAnswer` and the answers list on `ResearchContext` in
+`app.research.schemas`. Point `ResearchRequest` at those types so there is
+one validation path.
 
-Keep compatibility with existing internal calls by allowing
-`run_research` to accept a topic string and normalize it to a context, or by
-providing a small explicit compatibility wrapper. New code should use the
-structured context path.
+Change `run_research` to take `ResearchContext`. Keep a thin topic-string
+wrapper for old unit tests that only builds `ResearchContext(topic=topic)`.
+Update Planner and Writer signatures to accept `ResearchContext` and call
+the shared format helper. Leave Searcher and Emailer signatures as they
+are.
 
-Update Planner and Writer service signatures to accept `ResearchContext` (with
-an internal topic-only normalization helper where needed). Use dedicated
-formatting helpers for untrusted context so delimiters and field labels are
-consistent and easy to test. The report’s existing `topic` field remains the
-original topic.
+Update `/research` to construct `ResearchContext`, map `ValidationError` to
+422, and use type-only failure logging like `/clarify`.
 
-Update the frontend API adapter so `requestResearch` accepts the typed
-`ClarificationAnswer[]` held by the clarification session and sends them only
-to `/research`. The no-question path sends an empty list or preserves the
-topic-only request, while the answered path sends the structured context.
+Update the frontend API adapter so the clarification session’s frozen topic
+and answers are the research payload. `App.tsx` should not assemble that
+JSON inline.
 
 ## Success criteria
 
-- Topic-only `/research` requests remain valid and behave as before.
-- Answered requests validate before external calls and pass one structured
-  context through the code pipeline.
-- Planner receives clarification scope and can produce queries informed by it.
-- Writer receives the same context and produces the existing report shape.
-- Searcher, Emailer, report download, and frontend report rendering remain
-  compatible.
-- Invalid ids, duplicates, blanks, over-limit answers, and unknown unsafe
-  fields are handled without provider calls.
-- Clarification text and answers appear only in delimited user messages, never
-  system prompts.
-- Prompt-injection content remains inert data and does not alter orchestration.
-- Errors remain generic and logs do not expose topic, questions, answers, raw
-  model output, or provider details.
-- Frontend tests prove collected answers are sent and topic-only behavior still
-  works.
+- Topic-only `/research` remains valid and behaves as before.
+- Answered requests validate on the shared models before external calls and
+  pass one `ResearchContext` through the pipeline.
+- Planner user content includes delimited topic and Q&A; its system prompt
+  does not.
+- Writer uses the same delimited context as scope, keeps sources in a
+  separate block, and still emits the existing report shape with the
+  original topic.
+- Searcher is invoked only with plan queries; answers are absent from
+  Tavily calls.
+- Extra provider fields do not change behavior.
+- Invalid ids, duplicates, blanks, over-long fields, delimiter closers, and
+  more than three answers return 422 without provider calls.
+- Research 502 responses and logs contain no topic, questions, or answers.
+- Frontend sends collected answers only to `/research`, using the frozen
+  topic.
+- Existing report rendering, download, and no-question flow still work.
 
 ## Test plan
 
@@ -172,53 +231,64 @@ Cover at least:
 
 - topic-only request uses the existing pipeline;
 - valid clarified request builds the expected `ResearchContext`;
-- Planner and Writer receive context containing topic, question, and answer;
-- question ids are validated and preserved;
-- duplicate ids, blank values, over-long fields, and more than three answers
-  return 422 before external calls;
-- extra `model`, `client`, `limits`, or `api_key` fields do not change behavior;
-- topic/question/answer prompt-injection strings stay in user content and do
-  not appear in system prompts;
-- provider/pipeline failures return the existing generic research failure
-  response without leaking context.
+- Planner and Writer user messages contain the delimited topic and Q&A
+  blocks and their system prompts do not;
+- Writer keeps sources outside the clarification tags;
+- Searcher/Tavily is not called with answer or question text;
+- question ids match the pattern and order is preserved;
+- duplicate ids, blanks, over-long fields, C0 controls, closer tags, and
+  more than three answers return 422 before external calls;
+- extra `model`, `client`, `limits`, or `api_key` fields do not change
+  behavior;
+- pipeline failure returns generic 502 with no topic or answers in the
+  body.
 
 ### Frontend
 
 Cover at least:
 
-- no-question flow sends a topic-only research request;
-- answered flow sends the original topic and structured answers;
-- question ids and text are preserved from the clarification session;
-- answer text is not sent to `/clarify`;
+- no-question flow sends topic-only (or empty answers) research request
+  with no provider fields;
+- answered flow sends the frozen topic and structured answers to
+  `/research` only;
+- answers are not sent to `/clarify`;
 - duplicate submissions remain prevented;
-- existing report rendering continues after a clarified run.
+- report fields still render as text after a clarified run.
 
 ## Delivery plan
 
-1. Extend and validate the research request/context boundary.
-2. Update orchestrator, Planner, and Writer to accept structured context while
-   preserving topic-only compatibility.
-3. Add safe context-formatting helpers and prompt-boundary tests.
-4. Update the frontend API adapter and clarification submit path to send
-   answers to `/research`.
-5. Add backend and frontend regression/security tests.
+1. Tighten shared `ClarificationAnswer` / `ResearchContext` constraints and
+   extend `ResearchRequest`.
+2. Switch the orchestrator, Planner, and Writer to `ResearchContext`; add
+   the delimiter helper; keep Searcher on plan queries only.
+3. Update `/research` validation, generic 502, and type-only logging.
+4. Point the frontend adapter at the frozen session payload.
+5. Add backend and frontend tests for validation, prompt placement, and
+   compatibility.
 6. Run full backend tests/lint and frontend tests/lint/build.
 7. Update this plan with implementation notes and completed exit criteria.
 8. Open the PI-05 pull request once all exit criteria are complete.
 
 ## Exit criteria
 
-- [ ] `/research` accepts validated optional clarification answers.
+- [ ] Shared models enforce id pattern, uniqueness, list cap, and
+      question/answer length; `/research` uses them.
 - [ ] Topic-only requests remain backward compatible.
-- [ ] Structured context flows through Planner, Searcher, Writer, and Emailer.
-- [ ] Clarification content is delimited untrusted user data in prompts.
-- [ ] Server validation rejects invalid, oversized, duplicate, or excessive
-      answer context before external calls.
-- [ ] Frontend sends collected answers only to `/research`.
-- [ ] Backend and frontend tests cover compatibility, context propagation, and
-      prompt-boundary/security behavior.
+- [ ] One `ResearchContext` flows through Planner, Searcher, Writer, and
+      Emailer.
+- [ ] Topic and Q&A appear only in delimited user messages; system prompts
+      stay static; Writer treats answers as scope, not sources.
+- [ ] Searcher does not receive raw answers; search/source caps are
+      unchanged.
+- [ ] `/research` 422s invalid context before external calls and 502s
+      without logging or returning topic, questions, or answers.
+- [ ] Frontend sends collected answers only to `/research` with the frozen
+      topic.
+- [ ] Tests cover compatibility, validation, prompt placement, and the
+      Searcher boundary.
 - [ ] Full backend tests/lint and frontend tests/lint/build pass.
 - [ ] No secrets or unrelated story changes are included.
-- [ ] This plan reflects the final design and API boundary.
-- [ ] Pull request is opened from `pi-05-clarified-context` and links to this
-      document.
+- [ ] This plan reflects the final design, including the accepted
+      model-following and forged-Q&A residuals.
+- [ ] Pull request is opened from `pi-05-clarified-context` and links to
+      this document.
