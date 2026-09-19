@@ -10,7 +10,6 @@ from tavily import TavilyClient
 from app.agent.exceptions import (
     AgentContractError,
     AgentFailureReason,
-    AgentLimitError,
     AgentProviderError,
 )
 from app.agent.limits import reserve_iteration
@@ -101,7 +100,7 @@ class AgentProviderExecutor:
                     title=str(result.get("title", "")),
                     url=url,
                     content=str(result.get("content", "")),
-                    score=float(result.get("score", 0.0)),
+                    score=_source_score(result.get("score")),
                 )
                 source_id = f"src_{state.source_count + len(sources) + 1}"
                 sources.append(normalize_source(source_id, article))
@@ -162,9 +161,6 @@ class AgentProviderExecutor:
             ]
             report = write_report(run.context, sources)
             return ReportResult(operation=AgentOperation.WRITE_REPORT, report=report)
-        except AgentLimitError:
-            if state.terminal_outcome is None:
-                state.fail(AgentFailureReason.LIMIT_EXCEEDED)
         except AgentContractError:
             raise
         except Exception as err:
@@ -285,3 +281,10 @@ def _is_safe_extract_url(url: str) -> bool:
     except ValueError:
         return True
     return not (address.is_private or address.is_loopback or address.is_link_local)
+
+
+def _source_score(value: object) -> float:
+    try:
+        return float(value) if value is not None else 0.0
+    except (TypeError, ValueError):
+        return 0.0

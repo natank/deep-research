@@ -7,6 +7,7 @@ from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import FileResponse
 from pydantic import BaseModel, ConfigDict, Field, ValidationError
 
+from app.agent.exceptions import AgentRunError
 from app.clarification import ClarificationDecision, ClarificationError, decide_clarification
 from app.config import settings
 from app.orchestrator import ResearchResult, run_agent, run_research
@@ -86,6 +87,9 @@ def research(request: ResearchRequest) -> ResearchResult:
         return run_research(run.context)
     except ValidationError as err:
         raise HTTPException(status_code=422, detail="Invalid research context") from err
+    except AgentRunError as err:
+        logger.error("Agent pipeline failed: reason=%s", err.reason)
+        raise HTTPException(status_code=502, detail="Research failed, please try again") from None
     except Exception as err:
         logger.error("Research pipeline failed: %s", type(err).__name__)
         raise HTTPException(status_code=502, detail="Research failed, please try again") from None
