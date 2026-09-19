@@ -5,7 +5,7 @@ from pathlib import Path
 from fastapi import FastAPI, HTTPException
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import FileResponse
-from pydantic import BaseModel, Field
+from pydantic import BaseModel, Field, ValidationError
 
 from app.clarification import ClarificationDecision, ClarificationError, decide_clarification
 from app.config import settings
@@ -26,8 +26,12 @@ app.add_middleware(
 )
 
 
-class ResearchRequest(BaseModel):
+class TopicRequest(BaseModel):
     topic: str = Field(max_length=TOPIC_MAX_LENGTH)
+
+
+class ResearchRequest(ResearchContext):
+    pass
 
 
 @app.get("/health")
@@ -36,7 +40,7 @@ def health() -> dict[str, str]:
 
 
 @app.post("/clarify")
-def clarify(request: ResearchRequest) -> ClarificationDecision:
+def clarify(request: TopicRequest) -> ClarificationDecision:
     topic = request.topic.strip()
     if not topic:
         raise HTTPException(status_code=422, detail="Topic must not be empty")
@@ -54,14 +58,13 @@ def clarify(request: ResearchRequest) -> ClarificationDecision:
 
 @app.post("/research")
 def research(request: ResearchRequest) -> ResearchResult:
-    topic = request.topic.strip()
-    if not topic:
-        raise HTTPException(status_code=422, detail="Topic must not be empty")
-
     try:
-        return run_research(topic)
-    except Exception:
-        logger.exception("Research pipeline failed for topic: %s", topic)
+        context = ResearchContext.model_validate(request.model_dump())
+        return run_research(context)
+    except ValidationError as err:
+        raise HTTPException(status_code=422, detail="Invalid research context") from err
+    except Exception as err:
+        logger.error("Research pipeline failed: %s", type(err).__name__)
         raise HTTPException(status_code=502, detail="Research failed, please try again") from None
 
 

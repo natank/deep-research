@@ -1,14 +1,18 @@
 from enum import StrEnum
 
-from pydantic import BaseModel, Field, field_validator
+from pydantic import BaseModel, Field, field_validator, model_validator
 
 TOPIC_MAX_LENGTH = 200
+QUESTION_MAX_LENGTH = 200
+ANSWER_MAX_LENGTH = 500
+MAX_CLARIFICATION_ANSWERS = 3
+DELIMITER_CLOSER = "</untrusted-"
 
 
 class ClarificationAnswer(BaseModel):
-    question_id: str = Field(min_length=1)
-    question: str = Field(min_length=1)
-    answer: str = Field(min_length=1)
+    question_id: str = Field(pattern=r"^[a-z0-9][a-z0-9_-]{0,31}$")
+    question: str = Field(min_length=1, max_length=QUESTION_MAX_LENGTH)
+    answer: str = Field(min_length=1, max_length=ANSWER_MAX_LENGTH)
 
     @field_validator("question_id", "question", "answer")
     @classmethod
@@ -16,12 +20,18 @@ class ClarificationAnswer(BaseModel):
         value = value.strip()
         if not value:
             raise ValueError("value must not be empty")
+        if any(ord(character) < 32 for character in value):
+            raise ValueError("value contains control characters")
+        if DELIMITER_CLOSER in value.casefold():
+            raise ValueError("value contains a reserved delimiter")
         return value
 
 
 class ResearchContext(BaseModel):
     topic: str = Field(min_length=1, max_length=TOPIC_MAX_LENGTH)
-    clarification_answers: list[ClarificationAnswer] = Field(default_factory=list)
+    clarification_answers: list[ClarificationAnswer] = Field(
+        default_factory=list, max_length=MAX_CLARIFICATION_ANSWERS
+    )
 
     @field_validator("topic")
     @classmethod
@@ -29,7 +39,18 @@ class ResearchContext(BaseModel):
         value = value.strip()
         if not value:
             raise ValueError("topic must not be empty")
+        if any(ord(character) < 32 for character in value):
+            raise ValueError("topic contains control characters")
+        if DELIMITER_CLOSER in value.casefold():
+            raise ValueError("topic contains a reserved delimiter")
         return value
+
+    @model_validator(mode="after")
+    def validate_answer_ids(self) -> "ResearchContext":
+        ids = [answer.question_id for answer in self.clarification_answers]
+        if len(ids) != len(set(ids)):
+            raise ValueError("clarification question ids must be unique")
+        return self
 
 
 class OrchestrationMode(StrEnum):

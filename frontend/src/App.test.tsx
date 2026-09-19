@@ -41,7 +41,7 @@ describe('clarification flow', () => {
     fireEvent.change(screen.getByLabelText('Research topic'), { target: { value: 'topic' } })
     fireEvent.click(screen.getByRole('button', { name: 'Research' }))
 
-    await waitFor(() => expect(mockedRequestResearch).toHaveBeenCalledWith('topic'))
+    await waitFor(() => expect(mockedRequestResearch).toHaveBeenCalledWith('topic', []))
     expect(screen.queryByRole('heading', { name: 'Clarify your research' })).not.toBeInTheDocument()
   })
 
@@ -63,7 +63,11 @@ describe('clarification flow', () => {
 
     fireEvent.change(screen.getByLabelText('Your answer'), { target: { value: 'Since 2020' } })
     fireEvent.click(screen.getByRole('button', { name: 'Research with these answers' }))
-    await waitFor(() => expect(mockedRequestResearch).toHaveBeenCalledWith('topic'))
+    await waitFor(() =>
+      expect(mockedRequestResearch).toHaveBeenCalledWith('topic', [
+        { question_id: 'q1', question: 'Which timeframe?', answer: 'Since 2020' },
+      ]),
+    )
   })
 
   it('preserves the question form after a clarification failure', async () => {

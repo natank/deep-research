@@ -54,11 +54,11 @@ function App() {
     }
   }
 
-  async function runResearch(researchTopic: string) {
+  async function runResearch(researchTopic: string, clarificationAnswers: ClarificationAnswer[] = []) {
     setRunState('loading')
     setError(null)
     try {
-      setResult(await requestResearch(researchTopic))
+      setResult(await requestResearch(researchTopic, clarificationAnswers))
       setRunState('idle')
     } catch (err) {
       setError(err instanceof ApiError ? err.message : 'Research failed, please try again')
@@ -97,7 +97,7 @@ function App() {
       return
     }
 
-    await runResearch(clarification.topic)
+    await runResearch(clarification.topic, answers)
   }
 
   function handleStartOver() {

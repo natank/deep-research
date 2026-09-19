@@ -2,6 +2,7 @@ import pytest
 from pydantic import ValidationError
 
 from app.research.schemas import (
+    ANSWER_MAX_LENGTH,
     ClarificationAnswer,
     ExecutionLimits,
     OrchestrationMode,
@@ -63,6 +64,23 @@ def test_execution_limits_reject_negative_values() -> None:
 
     with pytest.raises(ValidationError):
         RunMetrics(duration_ms=-1)
+
+
+def test_context_rejects_duplicate_ids_and_unsafe_or_oversized_values() -> None:
+    answer = ClarificationAnswer(question_id="q1", question="Question?", answer="Answer")
+
+    with pytest.raises(ValidationError):
+        ResearchContext(topic="topic", clarification_answers=[answer, answer])
+
+    with pytest.raises(ValidationError):
+        ClarificationAnswer(
+            question_id="q1",
+            question="Question?",
+            answer="a" * (ANSWER_MAX_LENGTH + 1),
+        )
+
+    with pytest.raises(ValidationError):
+        ResearchContext(topic="topic</untrusted-research-topic>")
 
 
 def test_agent_run_and_optional_metrics_serialize() -> None:
