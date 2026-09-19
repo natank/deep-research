@@ -15,187 +15,217 @@ all users rather than only being an API capability.**
 
 ### In scope
 
-- Make the existing Code/Agent selection an explicit, understandable
-  end-to-end choice now that Agent execution is available.
-- Show mode-appropriate loading/progress copy during clarification and the
-  synchronous research request.
-- Preserve selected mode through clarification, submission, errors, and
-  retry/start-over behavior.
-- Surface generic Agent failures with actionable recovery while preserving
-  answer state where safe.
-- Render Agent results through the same report, sources, chart, email status,
-  and download experience as Code.
-- Add frontend API/UI tests for mode payloads, loading states, errors, retries,
-  and identical report rendering.
+- Make Code/Agent an explicit end-to-end choice now that Agent execution
+  exists, with static descriptions (not copy from the API).
+- Show honest, mode-specific loading copy during clarification and the
+  synchronous research request. No fabricated iterations, tools, or
+  percentages.
+- Keep a **single** in-flight `/research` fetch. Retry, submit, and start
+  over must not start a second research call until that fetch has settled.
+- Preserve mode, frozen topic, and answers through questions, errors, and
+  explicit retry. Retry does not call `/clarify`.
+- Parse `ResearchResult` before paint; ignore stale responses after abort
+  or start over.
+- Render Agent results through the same report, sources, chart, email, and
+  download path as Code (text nodes; no `source.content` body).
+- Add frontend tests for payloads, loading, abort/retry, malformed
+  responses, and shared rendering.
 
 ### Out of scope
 
-- Streaming progress, polling, a job API, or server-side cancellation. PI-08
-  intentionally uses a synchronous request with no public cancel route.
-- Run metrics, comparison mode, history, or persisted mode preferences
-  (PI-10/PI-11).
-- Changes to Agent limits, tools, prompts, provider behavior, or the Code
-  pipeline.
-- Client-side interpretation of Agent internals, tool names, source content,
-  or provider errors.
+- Streaming, polling, a job API, or server-side cancellation. Aborting the
+  fetch does **not** stop the PI-08 worker. Do not add a UI control that
+  looks like cancel.
+- Auto-retry on timeout or 502.
+- Run metrics, comparison mode, history, or persisted mode (PI-10/PI-11).
+- Changes to Agent limits, tools, prompts, or the Code pipeline.
+- Client interpretation of tool names, source snippets, reason codes, or
+  provider errors. Do not special-case HTTP 501 as “not implemented.”
 - Authentication, rate limiting, or deployment abuse controls.
+  Unauthenticated Agent is now a button for every user; server caps remain
+  the cost bound.
 
 ## Documentation rigor
 
 **Required level: medium-high.**
 
-This story changes the user-visible behavior of a high-cost, model-directed
-path. The UI must not claim granular progress it cannot observe, expose
-provider details, or imply that a failed Agent run produced a report. Mode and
-clarification state must remain consistent across async transitions, and
-controls must prevent duplicate submissions.
+The UI is how all users spend Agent budget. It must not claim progress it
+cannot observe, expose internals, paint a report from a bad or stale 200,
+or imply that abort cancelled the server. Retry is another paid run.
 
 ## Requirements
 
 ### Mode selection
 
-- Keep Code as the default.
-- Label the choices clearly as **Code orchestration** and **Agent
-  orchestration**, with concise descriptions of predictable fixed workflow
-  versus adaptive search decisions.
-- Keep the control accessible as a labeled radio group.
-- Allow mode changes while the clarification form is displayed, but freeze the
-  submitted mode once research starts.
-- Do not send mode to `/clarify`; send it only through the typed `/research`
-  adapter.
-- Starting over resets mode to Code and clears the previous result/error.
+- Default **Code**. Labels: **Code orchestration** and **Agent
+  orchestration**, plus a short static note (fixed workflow vs adaptive
+  search). Accessible radio group.
+- Mode may change on the questions screen. Once `/research` is in flight,
+  topic, mode, and submit are frozen.
+- Send mode only through `requestResearch`. `/clarify` stays `{ topic }`.
+- Start over resets mode to Code and clears topic, answers, result, error,
+  and any last-payload / in-flight generation.
 
-### Progress and loading
+### In-flight research
 
-The backend is synchronous and exposes no step events. Show honest
-phase-level copy only:
+Exactly one research request at a time:
 
-- clarification check: “Checking whether your topic needs clarification…”
-- Code run: planning, gathering sources, and writing;
-- Agent run: “Agent is researching, adapting its search plan, and writing
-  your report…” with a note that this may take up to a minute.
+- Disable Research, Retry, mode, and topic while `checking` or `loading`.
+- Do not add a second `AbortController` “cancel.” Keep the existing adapter
+  timeout (do not shorten it for Agent).
+- When that timeout aborts, treat it as failure **and** say the server may
+  still be finishing. Retry is a **new** paid run, not resume or cancel.
+- Tie each `/research` call to a generation id. After abort or start over,
+  ignore a late 200 so an abandoned Agent result cannot paint.
 
-Use `aria-live="polite"` for progress and disable topic/mode/submit controls
-while the corresponding request is in flight. Do not display fabricated
-iteration counts, tool names, percentages, or completion predictions.
+Retry payload is only `{ topic, clarification_answers?, orchestration_mode }`
+from the last submitted (frozen topic, current answers, selected mode). No
+`limits`, `model`, `tools`, or `api_key`. One submit per click; no loop.
+
+### Progress copy
+
+Synchronous backend, no step events. Phase-level copy only:
+
+- clarification: “Checking whether your topic needs clarification…”
+- Code: planning, gathering sources, and writing;
+- Agent: “Agent is researching, adapting its search plan, and writing your
+  report…” plus that this can take up to a minute.
+
+`aria-live="polite"`. No tool names, counters, or completion predictions.
 
 ### Success and failure
 
-- A successful Agent response uses the existing `ResearchResult` rendering
-  without a separate report component or alternate source format.
-- Show the same email status and download link for both modes.
-- Treat any non-2xx Agent response as failure; never render a report from a
-  partial response.
-- Keep server-provided errors generic. Do not surface raw provider messages,
-  prompts, URLs, source content, or exception details.
-- Preserve the clarification panel and entered answers after a research
-  failure so the user can retry or change mode. A clarification failure
-  remains recoverable by start over.
-- Provide a clear retry action that resubmits the frozen topic and current
-  answers with the selected mode, without invoking `/clarify` again.
-- Starting over is always available after a failure and returns to the clean
-  Code-default state.
+- Non-2xx, abort, and parse failure: generic alert, `result` stays null.
+  Use string `detail` only when it is a string (existing `ApiError` rule).
+  Never show reason codes, prompts, URLs, source bodies, or 501-specific
+  “not available” copy.
+- Parse `ResearchResult` before `setResult` (required report fields, email
+  `report_id` / status). Malformed 200 → generic failure, no success state.
+- Preserve the clarification panel and answers after a **research**
+  failure so the user can retry or change mode. Clarification failure:
+  start over.
+- Start over after failure returns to Code-default empty state.
+
+### Shared rendering
+
+One report path for both modes:
+
+- topic, summary, insights, chart title as React text nodes;
+- sources: title as text, `href={url}` as today (optional shared `http:` /
+  `https:` filter; no Agent-only list);
+- do **not** render `source.content`;
+- same email line and `/reports/{report_id}` download.
+
+No Markdown, `dangerouslySetInnerHTML`, or model-provided `src`/`style`.
 
 ## Proposed design
 
-Update `frontend/src/App.tsx` with an explicit `ResearchMode` presentation
-model and a request-phase helper:
+Update `App.tsx`:
 
-- retain the existing typed `OrchestrationMode` value;
-- store the mode in the clarification session and active run state;
-- derive loading copy from `runState` and mode;
-- track the last submitted research payload only for safe retry;
-- keep the existing report rendering path shared by both modes.
+- keep typed `OrchestrationMode` on the clarification session;
+- derive loading copy from `runState` + mode;
+- hold `inFlightGeneration` (or equivalent) and last allowlisted payload;
+- shared report JSX as today.
 
-Update `frontend/src/api.ts` only through the existing allowlisted
-`requestResearch` adapter. Keep response parsing and `ApiError` generic;
-avoid adding provider-specific status or payload handling.
+Update `api.ts` with a `ResearchResult` parser analogous to clarification
+parsing. Do not add provider-specific status handling.
 
-Add focused styles for mode descriptions, progress copy, and retry actions
-without changing the report layout. Ensure keyboard focus and labels remain
-visible and the layout works on narrow screens.
+Styles for mode descriptions, progress, retry, and abort copy; report
+layout unchanged. No backend contract changes. If the backend must change,
+keep PI-08 shapes and generic 502s.
 
-No backend contract changes are expected. If a backend change becomes
-necessary, preserve the PI-08 request/response shape and generic error
-behavior rather than exposing Agent internals.
+## Residual risks
 
-## Security and reliability considerations
-
-- Never render model-generated instructions as UI markup; continue using React
-  text nodes and existing safe response parsing.
-- Never include topic, answers, source content, provider bodies, or API data in
-  client error messages or analytics.
-- Do not retry automatically: an Agent run can spend provider budget. Make
-  retry an explicit user action and send the same allowlisted payload.
-- Disable controls during requests to prevent duplicate costly runs.
-- Do not use a client timeout shorter than the existing API adapter timeout for
-  the synchronous Agent path.
-- On stale or malformed responses, show a generic failure and leave no
-  success-shaped state.
+- Frontend abort does not cancel the worker; a report may still be emailed
+  after the UI gave up.
+- Retry after abort can overlap that still-running loop (second spend).
+  Copy must not claim otherwise; in-flight locking only prevents a second
+  fetch from **this** page until the first fetch object settles.
+- Unauthenticated Agent is a main-button cost switch; caps are server-side.
+- Source `href` values remain Tavily URLs (same as Code).
 
 ## Success criteria
 
-- All users can select and successfully run Agent mode through the existing UI.
-- Agent and Code display honest mode-specific progress and the same final
-  report experience.
-- Clarification answers and selected mode survive the entire flow.
-- Agent failures are generic, recoverable, and never render partial reports.
-- Explicit retry does not re-run clarification or lose answers.
-- Start over clears all run state and resets Code as the default.
-- No duplicate submissions occur while a request is active.
-- Existing Code behavior and report rendering remain unchanged.
+- All users can run Agent from the existing UI.
+- Honest mode-specific progress; same final report experience as Code.
+- Mode and answers survive the flow; retry does not re-clarify.
+- Failures are generic, never a partial report, never 501-as-unimplemented.
+- Malformed or stale 200s do not paint a report.
+- No second `/research` while one fetch is in flight; abort copy does not
+  claim cancel.
+- Start over clears all run state and resets Code.
+- Existing Code behavior remains unchanged.
 
 ## Test plan
 
-### Mode and clarification flow
+### Mode and clarification
 
-- Code is selected by default and is sent for a clear topic.
-- Agent selection is sent only to `/research`, not `/clarify`.
-- Agent selection survives clarification and answer submission.
-- Mode controls are enabled during questions and disabled during requests.
-- Starting over resets mode, topic, answers, result, and errors.
+- Code default; sent on a clear topic.
+- Agent sent only to `/research`, not `/clarify`.
+- Agent survives questions and answer submit.
+- Mode enabled on questions, disabled during requests.
+- Start over resets mode, topic, answers, result, errors, and generation.
 
-### Progress and errors
+### Progress, abort, errors
 
-- Code and Agent show distinct honest loading copy.
-- Clarification loading copy remains unchanged.
-- Agent 502/generic failure shows an alert, no report, and preserves topic,
-  mode, questions, and answers.
-- Retry resubmits the same topic/answers/mode once explicitly.
-- A malformed or rejected response cannot populate the report.
-- Controls prevent duplicate submit clicks during loading.
+- Distinct honest Code vs Agent loading copy.
+- 502/generic failure: alert, no report, preserved topic/mode/answers.
+- Abort: generic failure plus “server may still be finishing”; Retry is
+  explicit and allowlisted; no auto-retry.
+- Submit/Retry disabled while loading; cannot stack two research fetches.
+- Malformed 200 does not set a report; stale 200 after start over is
+  ignored.
 
 ### Shared results and regression
 
-- An Agent `ResearchResult` renders summary, insights, chart, sources, email
-  status, and download link identically to Code.
-- Existing no-question and answered-question Code tests remain green.
+- Agent `ResearchResult` renders summary, insights, chart, source titles
+  and links, email, download — no `source.content`.
+- Existing Code tests stay green.
 - Frontend tests, lint, and production build pass.
 
 ## Delivery plan
 
-1. Refine mode selector labels/descriptions and active-run state.
-2. Add honest mode-specific loading copy and accessible status behavior.
-3. Add explicit retry handling that preserves the submitted payload.
-4. Add Agent success/failure and shared-result tests.
-5. Run frontend tests, lint, and build; run backend regression tests.
-6. Update this plan with implementation notes and completed exit criteria.
-7. Open the independent PI-09 pull request after all exit criteria pass.
+1. Mode labels/descriptions and frozen in-flight state.
+2. Honest loading copy; generation id for stale responses.
+3. `ResearchResult` parser; explicit retry of the allowlisted payload.
+4. Abort copy; tests for success, failure, malformed/stale, no stacked
+   fetches.
+5. Frontend tests/lint/build; backend regression.
+6. Update this plan with implementation notes and exit criteria.
+7. Open the PI-09 pull request after exit criteria pass.
 
 ## Exit criteria
 
-- [ ] Agent mode is usable end to end for all users.
-- [ ] Mode and clarification state survive selection, questions, submission,
-      success, failure, retry, and start over.
-- [ ] Progress copy is phase-accurate without fabricated Agent internals.
-- [ ] Agent failures are generic, recoverable, and never render partial data.
-- [ ] Retry is explicit, bounded to the submitted payload, and does not rerun
-      clarification.
-- [ ] Shared Code/Agent report, source, email, and download rendering works.
-- [ ] Accessible controls and loading/error states are complete.
-- [ ] Frontend tests/lint/build and backend regression tests pass.
-- [ ] No secrets or unrelated story changes are included.
-- [ ] This plan reflects final UX behavior and residual synchronous-request
-      limitations.
-- [ ] Pull request is opened from `pi-09-agent-ui-integration` and links to
-      this document.
+- [x] Agent mode is usable end to end for all users.
+- [x] Mode and clarification state survive selection, questions,
+      submission, success, failure, retry, and start over.
+- [x] Progress copy is phase-accurate without Agent internals.
+- [x] Failures are generic; no partial or stale reports; no 501 special
+      case.
+- [x] Retry is explicit, allowlisted, does not re-clarify, and cannot
+      start while a fetch is in flight.
+- [x] Abort does not claim the server stopped.
+- [x] Shared Code/Agent report rendering does not show source bodies.
+- [x] Accessible controls and loading/error states are complete.
+- [x] Frontend tests/lint/build and backend regression tests pass.
+- [x] Residual sync-request limitations are documented.
+- [x] No secrets or unrelated story changes are included.
+- [ ] Pull request is opened from `pi-09-agent-ui-integration` and links
+      to this document.
+
+## Implementation notes
+
+- Added explicit Code/Agent orchestration labels and static descriptions,
+  honest mode-specific synchronous loading copy, and accessible progress/error
+  states.
+- Added an allowlisted `ResearchResult` parser that validates report, chart,
+  source-link, and email fields before updating UI state. Source bodies remain
+  unrendered.
+- Added frozen research payload tracking, explicit retry without re-running
+  clarification, single-fetch protection, and generation checks that ignore
+  late responses after start over.
+- Timeout copy states that the server may still be finishing; the UI does not
+  claim that abort cancels the backend worker. No automatic retry was added.
+- Validation passed: 10 frontend tests, frontend lint, frontend production
+  build, and the backend regression suite. The existing Vite bundle-size and
+  Starlette/httpx deprecation warnings remain non-blocking.

@@ -1,4 +1,4 @@
-import { useState } from 'react'
+import { useRef, useState } from 'react'
 import type { FormEvent } from 'react'
 import './App.css'
 import ReportChart from './ReportChart'
@@ -21,6 +21,12 @@ interface ClarificationSession {
   orchestrationMode: OrchestrationMode
 }
 
+interface ResearchPayload {
+  topic: string
+  clarificationAnswers: ClarificationAnswer[]
+  orchestrationMode: OrchestrationMode
+}
+
 function App() {
   const [topic, setTopic] = useState('')
   const [runState, setRunState] = useState<RunState>('idle')
@@ -28,6 +34,9 @@ function App() {
   const [result, setResult] = useState<ResearchResult | null>(null)
   const [clarification, setClarification] = useState<ClarificationSession | null>(null)
   const [orchestrationMode, setOrchestrationMode] = useState<OrchestrationMode>('code')
+  const [lastResearch, setLastResearch] = useState<ResearchPayload | null>(null)
+  const generationRef = useRef(0)
+  const researchInFlightRef = useRef(false)
 
   async function handleSubmit(event: FormEvent<HTMLFormElement>) {
     event.preventDefault()
@@ -45,7 +54,7 @@ function App() {
     try {
       const decision = await requestClarification(trimmedTopic)
       if (decision.questions.length === 0) {
-        await runResearch(trimmedTopic, [], orchestrationMode)
+        await runResearch({ topic: trimmedTopic, clarificationAnswers: [], orchestrationMode })
         return
       }
 
@@ -62,19 +71,28 @@ function App() {
     }
   }
 
-  async function runResearch(
-    researchTopic: string,
-    clarificationAnswers: ClarificationAnswer[] = [],
-    mode: OrchestrationMode = 'code',
-  ) {
+  async function runResearch(payload: ResearchPayload) {
+    if (researchInFlightRef.current) return
+    researchInFlightRef.current = true
+    const generation = ++generationRef.current
+    setLastResearch(payload)
     setRunState('loading')
     setError(null)
     try {
-      setResult(await requestResearch(researchTopic, clarificationAnswers, mode))
+      const researchResult = await requestResearch(
+        payload.topic,
+        payload.clarificationAnswers,
+        payload.orchestrationMode,
+      )
+      if (generation !== generationRef.current) return
+      setResult(researchResult)
       setRunState('idle')
     } catch (err) {
+      if (generation !== generationRef.current) return
       setError(err instanceof ApiError ? err.message : 'Research failed, please try again')
       setRunState('error')
+    } finally {
+      researchInFlightRef.current = false
     }
   }
 
@@ -114,14 +132,41 @@ function App() {
       return
     }
 
-    await runResearch(clarification.topic, answers, clarification.orchestrationMode)
+    await runResearch({
+      topic: clarification.topic,
+      clarificationAnswers: answers,
+      orchestrationMode: clarification.orchestrationMode,
+    })
+  }
+
+  async function handleRetry() {
+    if (clarification) {
+      const answers = clarification.questions.map((question) => ({
+        question_id: question.id,
+        question: question.question,
+        answer: clarification.answers[question.id].trim(),
+      }))
+      if (answers.some((answer) => !answer.answer)) {
+        setRunState('questions')
+        return
+      }
+      await runResearch({
+        topic: clarification.topic,
+        clarificationAnswers: answers,
+        orchestrationMode: clarification.orchestrationMode,
+      })
+      return
+    }
+    if (lastResearch) await runResearch(lastResearch)
   }
 
   function handleStartOver() {
+    generationRef.current += 1
     setTopic('')
     setClarification(null)
     setResult(null)
     setError(null)
+    setLastResearch(null)
     setRunState('idle')
     setOrchestrationMode('code')
   }
@@ -166,7 +211,11 @@ function App() {
           <span id="topic-hint" className="topic-hint">
             {topic.length}/{TOPIC_MAX_LENGTH}
           </span>
-          <fieldset className="mode-selector" disabled={runState === 'checking' || runState === 'loading'}>
+          <fieldset
+            className="mode-selector"
+            disabled={runState === 'checking' || runState === 'loading'}
+            aria-describedby="mode-hint"
+          >
             <legend>Orchestration mode</legend>
             <label>
               <input
@@ -176,7 +225,7 @@ function App() {
                 checked={orchestrationMode === 'code'}
                 onChange={() => updateOrchestrationMode('code')}
               />
-              Code
+              <span>Code orchestration</span>
             </label>
             <label>
               <input
@@ -186,15 +235,24 @@ function App() {
                 checked={orchestrationMode === 'agent'}
                 onChange={() => updateOrchestrationMode('agent')}
               />
-              Agent
+              <span>Agent orchestration</span>
             </label>
+            <span id="mode-hint" className="mode-hint">
+              {orchestrationMode === 'code'
+                ? 'A predictable fixed workflow.'
+                : 'Adaptive search decisions within server limits.'}
+            </span>
           </fieldset>
         </form>
 
         {runState === 'loading' && (
           <section className="status-banner status-loading" aria-live="polite">
             <span className="spinner" aria-hidden="true" />
-            <p>Planning searches, gathering sources, and writing your report. This can take up to a minute…</p>
+            <p>
+              {orchestrationMode === 'agent'
+                ? 'Agent is researching, adapting its search plan, and writing your report. This can take up to a minute…'
+                : 'Planning searches, gathering sources, and writing your report. This can take up to a minute…'}
+            </p>
           </section>
         )}
 
@@ -208,6 +266,11 @@ function App() {
         {error && (
           <section className="status-banner status-error" role="alert">
             <p>{error}</p>
+            {lastResearch && (
+              <button type="button" className="retry-button" onClick={handleRetry} disabled={runState === 'loading'}>
+                Retry research
+              </button>
+            )}
           </section>
         )}
 
@@ -235,7 +298,6 @@ function App() {
                     maxLength={500}
                     autoComplete="off"
                     aria-describedby={`purpose-${question.id}`}
-                    disabled={runState !== 'questions'}
                   />
                 </fieldset>
               ))}

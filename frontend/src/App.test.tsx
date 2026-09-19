@@ -53,7 +53,7 @@ describe('clarification flow', () => {
     mockedRequestResearch.mockResolvedValue(result)
     render(<App />)
 
-    fireEvent.click(screen.getByLabelText('Agent'))
+    fireEvent.click(screen.getByLabelText('Agent orchestration'))
     fireEvent.change(screen.getByLabelText('Research topic'), { target: { value: 'topic' } })
     fireEvent.click(screen.getByRole('button', { name: 'Research' }))
 
@@ -95,19 +95,62 @@ describe('clarification flow', () => {
     )
   })
 
-  it('shows the Agent unsupported response without rendering a report', async () => {
+  it('shows a generic Agent failure without rendering a report', async () => {
     mockedRequestClarification.mockResolvedValue({ needs_clarification: false, questions: [] })
-    mockedRequestResearch.mockRejectedValue(new ApiError('Agent orchestration is not available yet'))
+    mockedRequestResearch.mockRejectedValue(new ApiError('Research failed, please try again'))
     render(<App />)
 
-    fireEvent.click(screen.getByLabelText('Agent'))
+    fireEvent.click(screen.getByLabelText('Agent orchestration'))
     fireEvent.change(screen.getByLabelText('Research topic'), { target: { value: 'topic' } })
     fireEvent.click(screen.getByRole('button', { name: 'Research' }))
 
-    expect(await screen.findByRole('alert')).toHaveTextContent(
-      'Agent orchestration is not available yet',
-    )
+    expect(await screen.findByRole('alert')).toHaveTextContent('Research failed, please try again')
     expect(screen.queryByRole('heading', { name: 'summary' })).not.toBeInTheDocument()
+  })
+
+  it('shows honest Agent progress and prevents duplicate research requests', async () => {
+    mockedRequestClarification.mockResolvedValue({ needs_clarification: false, questions: [] })
+    let resolveResearch!: (value: ResearchResult) => void
+    mockedRequestResearch.mockReturnValue(
+      new Promise<ResearchResult>((resolve) => {
+        resolveResearch = resolve
+      }),
+    )
+    render(<App />)
+
+    fireEvent.click(screen.getByLabelText('Agent orchestration'))
+    fireEvent.change(screen.getByLabelText('Research topic'), { target: { value: 'topic' } })
+    fireEvent.click(screen.getByRole('button', { name: 'Research' }))
+
+    expect(
+      await screen.findByText(
+        'Agent is researching, adapting its search plan, and writing your report. This can take up to a minute…',
+      ),
+    ).toBeInTheDocument()
+    expect(screen.getByRole('button', { name: 'Researching…' })).toBeDisabled()
+    fireEvent.click(screen.getByRole('button', { name: 'Researching…' }))
+    expect(mockedRequestResearch).toHaveBeenCalledTimes(1)
+
+    resolveResearch(result)
+    await waitFor(() => expect(screen.getByText('summary')).toBeInTheDocument())
+  })
+
+  it('explicitly retries a failed direct research request without clarification', async () => {
+    mockedRequestClarification.mockResolvedValue({ needs_clarification: false, questions: [] })
+    mockedRequestResearch
+      .mockRejectedValueOnce(new ApiError('Research failed, please try again'))
+      .mockResolvedValueOnce(result)
+    render(<App />)
+
+    fireEvent.change(screen.getByLabelText('Research topic'), { target: { value: 'topic' } })
+    fireEvent.click(screen.getByRole('button', { name: 'Research' }))
+    expect(await screen.findByRole('alert')).toHaveTextContent('Research failed, please try again')
+
+    fireEvent.click(screen.getByRole('button', { name: 'Retry research' }))
+    await waitFor(() => expect(mockedRequestResearch).toHaveBeenCalledTimes(2))
+    expect(mockedRequestClarification).toHaveBeenCalledTimes(1)
+    expect(mockedRequestResearch).toHaveBeenLastCalledWith('topic', [], 'code')
+    expect(await screen.findByText('summary')).toBeInTheDocument()
   })
 
   it('preserves the question form after a clarification failure', async () => {
