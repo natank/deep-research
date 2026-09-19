@@ -104,7 +104,7 @@ def test_agent_finish_without_report_is_failure() -> None:
 def test_openai_adapter_uses_one_strict_action_and_delimited_user_state() -> None:
     client = MagicMock()
     client.responses.parse.return_value.output_parsed = MagicMock(
-        action={"operation": "search", "query": "query"}
+        model_dump=lambda **_: {"operation": "search", "query": "query"}
     )
     model = OpenAIAgentModel(client=client)
     model.choose_action(

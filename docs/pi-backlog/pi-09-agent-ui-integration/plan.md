@@ -229,3 +229,7 @@ keep PI-08 shapes and generic 502s.
 - Validation passed: 10 frontend tests, frontend lint, frontend production
   build, and the backend regression suite. The existing Vite bundle-size and
   Starlette/httpx deprecation warnings remain non-blocking.
+- Follow-up compatibility fix: the production OpenAI adapter now uses a flat
+  required nullable action envelope and revalidates it through the strict
+  PI-07 parser. This avoids provider rejection of the nested discriminated
+  union while preserving the same five-operation authorization boundary.

@@ -76,7 +76,10 @@ class OpenAIAgentModel:
         decision = response.output_parsed
         if decision is None:
             raise AgentContractError
-        return decision.action
+        try:
+            return parse_action(decision.model_dump(mode="json", exclude_none=True))
+        except AttributeError as err:
+            raise AgentContractError from err
 
 
 class AgentProviderExecutor:

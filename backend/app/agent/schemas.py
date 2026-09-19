@@ -62,7 +62,11 @@ AgentAction = Annotated[
 
 
 class AgentDecision(_StrictModel):
-    action: AgentAction
+    operation: AgentOperation
+    query: str | None
+    source_id: str | None
+    queries: list[str] | None
+    reason: AgentFailureReason | None
 
 
 class SourceEnvelope(_StrictModel):
