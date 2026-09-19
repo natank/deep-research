@@ -148,8 +148,24 @@ def test_provider_content_cannot_close_untrusted_delimiter() -> None:
         score=0.5,
     )
 
-    with pytest.raises(AgentContractError):
-        normalize_source("src_one", article)
+    source = normalize_source("src_one", article)
+
+    assert "</untrusted-" not in source.content
+    assert "\n" not in source.content
+
+
+def test_provider_content_with_newlines_is_normalized_for_agent_state() -> None:
+    article = SourceArticle(
+        title="title\nwith newline",
+        url="https://example.com",
+        content="first line\nsecond line",
+        score=0.5,
+    )
+
+    source = normalize_source("src_one", article)
+
+    assert source.title == "title with newline"
+    assert source.content == "first line second line"
 
 
 def test_retries_are_limited_and_consume_tool_calls() -> None:

@@ -48,9 +48,12 @@ logger = logging.getLogger(__name__)
 AGENT_SYSTEM_PROMPT = (
     "You are a bounded research orchestration agent. Return exactly one structured action "
     "per turn using only search, inspect_source, revise_plan, write_report, or finish. "
+    "Always supply all envelope fields: operation plus query, source_id, queries, and reason; "
+    "use null for fields that do not apply. "
     "Search queries are not URLs. Inspect only a source_id already returned by search. "
     "Clarification answers define scope and are not evidence. Use write_report only when "
-    "server-held sources are sufficient. Finish without a validated report is failure. "
+    "server-held sources are sufficient. When no sources exist, search first. "
+    "Finish without a validated report is failure. "
     "Never request tools, limits, providers, credentials, email, filesystem, shell, or HTTP."
 )
 
@@ -184,6 +187,9 @@ def execute_agent(
             _dispatch_action(state, run, provider, action)
         except AgentContractError:
             if state.terminal_outcome is None:
+                logger.warning(
+                    "Agent action rejected: reason=%s", AgentFailureReason.INVALID_ACTION
+                )
                 state.record_invalid_action()
         except AgentProviderError:
             if state.terminal_outcome is None:

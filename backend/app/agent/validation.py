@@ -44,10 +44,18 @@ def validate_plan_queries(queries: list[str]) -> list[str]:
 
 def normalize_source(source_id: str, article: SourceArticle) -> SourceEnvelope:
     try:
-        envelope = SourceEnvelope.from_article(source_id, article)
+        envelope = SourceEnvelope.from_article(
+            source_id,
+            SourceArticle(
+                title=_normalize_provider_text(article.title),
+                url=article.url,
+                content=_normalize_provider_text(article.content),
+                score=article.score,
+            ),
+        )
     except ValidationError as err:
         raise AgentContractError from err
-    for value in (envelope.title, envelope.url, envelope.content):
+    for value in (envelope.url,):
         if any(ord(character) < 32 for character in value):
             raise AgentContractError
         if DELIMITER_CLOSER in value.casefold():
@@ -60,3 +68,8 @@ def require_known_source(state: AgentExecutionState, source_id: str) -> SourceEn
         if source.source_id == source_id:
             return source
     raise AgentContractError
+
+
+def _normalize_provider_text(value: str) -> str:
+    value = "".join(" " if ord(character) < 32 else character for character in value)
+    return value.replace(DELIMITER_CLOSER, "< /untrusted-")
