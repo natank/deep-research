@@ -17,230 +17,272 @@ uncontrolled tool use, cost growth, or invalid report output.**
 
 - Define typed Agent action, tool input, tool result, and execution-state
   contracts under the shared research/agent boundary.
-- Define server-owned limits for iterations, tool calls, searches, sources, and
-  report-generation attempts.
-- Define the allowlisted research tools PI-08 may invoke:
-  search, inspect source, and generate report.
-- Define autonomous search-plan revision as an explicit Agent action bounded by
-  the run context and limits.
-- Define deterministic validation, failure, cancellation, and termination
-  semantics for the future Agent loop.
+- Map every allowlisted action onto server-owned PI-01 `ExecutionLimits`
+  counters, plus a small server constant for report attempts.
+- Define the only operations PI-08 may invoke: `search`, `inspect_source`,
+  `revise_plan`, `write_report`, and `finish`.
+- Restrict `inspect_source` to a server-assigned `source_id` and the existing
+  Tavily/searcher extract path — not a model URL and not a general HTTP
+  client.
+- Define plan revision as query-list mutation only.
+- Define terminal **success** as one validated `Report` from `write_report`
+  over server-held evidence; every other stop is typed failure.
 - Add unit tests for valid/invalid actions, limit accounting, result bounds,
-  terminal states, and untrusted provider content.
-- Document the contract and residual risks for PI-08 implementation.
+  terminal states, SSRF-style inspect arguments, and untrusted provider
+  content.
+- Document PI-08 integration rules and residual risks in this plan.
 
 ### Out of scope
 
-- Calling an LLM in an Agent loop or dispatching Agent mode (PI-08).
-- Changing the current Code pipeline or its Planner, Searcher, Writer, or
-  Emailer behavior.
-- Adding browser/UI progress or Agent-specific API responses (PI-09).
-- Run persistence, comparison execution, or metrics emission (PI-10/PI-11).
-- New external providers, arbitrary HTTP tools, code execution, filesystem
-  tools, email tools, or user-configurable limits.
+- Calling an LLM in an Agent loop or replacing PI-06’s Agent 501 (PI-08).
+- Changing the Code pipeline (Planner, Searcher, Writer, Emailer).
+- Adding Emailer, filesystem, shell, code execution, or arbitrary HTTP as
+  Agent tools. PI-08 may send email **after** a successful report, outside
+  the tool loop.
+- A public cancel endpoint or job API. Timeout/cancel exist only as terminal
+  reason codes for PI-08 to map from the existing request timeout.
+- Browser/UI progress (PI-09), metrics (PI-10), or comparison runs (PI-11).
+- Client-configurable limits, tools, model, or provider. Unauthenticated
+  Agent cost remains a PI-08 residual bounded by these caps.
 
 ## Documentation rigor
 
 **Required level: high.**
 
-These contracts become the security and reliability boundary for an
-LLM-controlled execution path. Tool names, arguments, result sizes, counters,
-and terminal transitions must be allowlisted and validated independently of
-model output. PI-08 must be able to enforce a hard stop without trusting the
-model to self-limit.
+These contracts are the security boundary for an LLM-controlled path. Tool
+names, arguments, result sizes, counters, and terminal transitions must be
+allowlisted and validated independently of model output. PI-08 must hard-stop
+without trusting the model to self-limit, inspect without opening SSRF, and
+succeed only with a real report.
 
 ## Requirements
 
 ### Agent execution state
 
-Define a typed state containing:
+Typed in-memory state contains:
 
-- the validated `ResearchContext`;
-- server-owned `ExecutionLimits`;
-- current search-plan queries and revision count;
-- collected source references and bounded source content;
-- tool-call and iteration counters;
-- report-generation attempt count;
-- terminal status and a safe terminal reason.
+- validated `ResearchContext` (immutable for the run);
+- a copy of server-owned `ExecutionLimits` from the `ResearchRun` (defaults
+  from `ExecutionLimits()`, never request fields);
+- current search-plan queries and a revision count;
+- collected sources as bounded envelopes (`source_id`, `SourceArticle`
+  fields with size caps);
+- counters: iterations, tool calls, searches, sources, report attempts;
+- terminal status and a safe reason code.
 
-The state must not contain client-supplied provider settings, API keys,
-arbitrary tool names, prompts intended for a system message, or unrestricted
-provider payloads. `OrchestrationMode` remains dispatch metadata and must not be
-inserted into Planner/Writer research content.
+State must not hold API keys, client provider settings, arbitrary tool
+names, system-prompt text, raw provider payloads, or `OrchestrationMode` as
+research content. Mode stays dispatch metadata for PI-08.
 
 ### Allowlisted actions
 
-Use a discriminated, typed action shape with exactly these operations:
+Discriminated union, `extra="forbid"`, exactly:
 
-1. **`search`** — execute bounded Tavily searches from validated query strings.
-2. **`inspect_source`** — request additional bounded content for a previously
-   returned source URL or source identifier.
-3. **`revise_plan`** — replace or append bounded search queries based on evidence.
-4. **`write_report`** — request the existing report shape from the bounded
-   context and collected evidence.
-5. **`finish`** — explicitly terminate with a complete or failed outcome.
+1. **`search`** — Tavily search from validated query strings. Queries are
+   not URLs and must not be fetched.
+2. **`inspect_source`** — extra bounded content for a **`source_id` already
+   in this run’s state**. The model must not pass a URL. The executor looks
+   up the id and calls Tavily/searcher extract (or the existing searcher
+   helper), never `httpx`/`requests`/open-ended HTTP. Unknown ids, extra
+   `url` fields, `file://`, localhost, and link-local/metadata hosts are
+   rejected with **no** network call.
+3. **`revise_plan`** — replace or append the **query list only**, within
+   count/length/C0/delimiter rules. Cannot change topic, answers, limits,
+   sources, permissions, or terminal status.
+4. **`write_report`** — produce the existing `Report` from
+   `format_research_context(state.context)` plus collected sources in a
+   separate sources block. Ignore any model-supplied source list,
+   recipient, path, email target, provider, or extra instructions. Answers
+   remain scope, not sources.
+5. **`finish`** — stop the loop. Without a validated report already
+   produced by `write_report`, the outcome is **failure**.
 
-Unknown operations and arbitrary tool names must be rejected before provider
-I/O. `write_report` and `finish` are terminal transitions; no subsequent
-actions are accepted.
+Unknown operations are rejected before I/O. After a terminal success or
+failure, further actions are rejected.
 
 ### Input and result bounds
 
-- Search queries must be nonblank, bounded in count and length, and validated
-  with the same control-character and delimiter protections used for research
-  context.
-- Source inspection must reference a source already returned by `search`; it
-  must not fetch arbitrary URLs or internal addresses.
-- Search and inspection results must be normalized to the existing
-  `SourceArticle` shape and capped by server limits. Provider content is
-  untrusted data, not an instruction.
-- Plan revisions may only operate on the current research topic, clarification
-  scope, and collected evidence. They may not alter execution limits or tool
-  permissions.
-- Report generation must use the existing `Report` schema and must not accept
-  a model-supplied recipient, report path, email target, or provider choice.
-- Tool results returned to the Agent must be bounded and tagged by type; raw
-  provider response bodies and credentials must never be copied into state or
-  logs.
+- Search queries: nonblank, same C0 and `</untrusted-` rules as PI-05,
+  max length 200, max stored queries 8 (aligned with today’s planner cap
+  and `max_searches`).
+- `search` goes only to `TavilyClient.search` (or the current searcher
+  wrapper).
+- Results normalize to `SourceArticle` plus a server-assigned `source_id`.
+  Cap title/url/content (content on the order of a few thousand
+  characters). Provider text is untrusted data, not instructions.
+- Store only these envelopes in state; never raw Tavily/OpenAI bodies or
+  credentials.
+- PI-08 must place envelopes in the tool/user role inside delimiters, not
+  in the system prompt. This story defines the envelope so that path is
+  possible.
 
 ### Limits and stopping rules
 
-All limits are server-owned `ExecutionLimits` values. The implementation must
-check a limit **before** each operation and reserve/increment the counter
-atomically within the in-memory run state before provider I/O.
+Use PI-01 defaults: `max_searches=8`, `max_sources=8`, `max_tool_calls=12`,
+`max_agent_iterations=5`. Add a **server constant** `MAX_REPORT_ATTEMPTS = 2`
+(not a request field). Optionally clamp `ExecutionLimits` with a modest
+ceiling so internal callers cannot set `max_tool_calls=10**9`.
 
-The Agent must stop with a typed terminal outcome when any of these occurs:
+Accounting (check **and reserve** the counter in state **before** I/O;
+failed I/O still consumes the reservation):
 
-- explicit `finish`;
-- successful `write_report`;
-- maximum Agent iterations reached;
-- maximum tool calls reached;
-- maximum searches, sources, or report attempts reached;
-- invalid action or repeated invalid actions;
-- provider/tool failure after the defined failure policy;
-- cancellation or request timeout.
+- each PI-08 model round increments `iterations`;
+- `search` increments `searches` and `tool_calls`; collected sources stay
+  ≤ `max_sources`;
+- `inspect_source` and `revise_plan` increment `tool_calls`;
+- `write_report` increments `report_attempts` and `tool_calls`.
 
-No limit exhaustion may produce a success-shaped partial report. A terminal
-failure must be surfaced to PI-08 for generic API mapping and must not trigger
-an automatic Code fallback.
+Retries: at most **one** retry per operation, not model-controlled, and
+each retry consumes `tool_calls`. Invalid actions never call a provider;
+after **three** invalid actions, terminate as failure.
+
+Stop with a typed terminal outcome when:
+
+- `write_report` returns a validated `Report` → **success**;
+- `finish` with no such report, limit hit, third invalid action, provider
+  failure after the retry policy, or mapped request timeout → **failure**.
+
+No limit exhaustion or `finish` may look like a successful partial report.
+PI-08 maps failures to the existing generic 502 and must not fall back to
+Code.
 
 ### Failure policy
 
-- Validation failures are typed and contain safe, non-sensitive reason codes.
-- Tavily/OpenAI/provider failures are converted to typed tool failures with
-  exception type only for logs.
-- Retry behavior is finite and operation-specific; retries consume tool-call
-  budget and are never model-controlled.
-- Invalid actions do not invoke a tool. After the configured invalid-action
-  threshold, terminate the run.
-- Cancellation and timeout are terminal failures.
+- Validation and limit errors use reason codes only. Exception messages
+  must not include topic, query, URL, source content, or provider bodies.
+- Provider failures become typed tool failures; logs record exception
+  **class** only.
+- Timeout is a terminal reason on state (`timed_out`). Cancellation is the
+  same class of reason (`cancelled`) for PI-08; this story does not add an
+  HTTP cancel route.
 
 ## Proposed module design
 
-Add a focused `backend/app/agent/` package, keeping shared primitives in
-`backend/app/research/schemas.py` where they are reused by both modes:
+Add `backend/app/agent/`, keeping shared primitives in
+`backend/app/research/schemas.py` when both modes need them:
 
-- `schemas.py`: action unions, tool inputs/results, execution state, terminal
-  outcome, and safe reason codes;
-- `limits.py`: server defaults and preflight counter/limit checks;
-- `validation.py`: action and result validation, including source-reference
-  checks and bounded text normalization;
-- `exceptions.py`: typed contract, limit, cancellation, and provider errors.
+- `schemas.py` — action union (`extra="forbid"`), result envelopes,
+  execution state, terminal outcome, reason codes;
+- `limits.py` — `ExecutionLimits()` defaults, report-attempt constant,
+  preflight reserve/increment;
+- `validation.py` — action/result checks, `source_id` lookup, query
+  normalization;
+- `exceptions.py` — contract, limit, timeout, and provider errors with
+  safe messages;
+- a small **executor interface** whose methods PI-08 will call. The
+  executor receives a server-built `ResearchRun`, not the HTTP body, and
+  owns Tavily/Writer calls. This story can ship the interface and fakes;
+  it must not run an LLM loop.
 
-PI-08 should consume these contracts through a small executor interface rather
-than constructing provider requests directly in the Agent loop. The executor
-must receive a server-built `ResearchRun`, not the raw HTTP request. The
-existing Code orchestrator remains unchanged in this story.
+The Code orchestrator must not import Agent handlers.
 
-## Security and trust-boundary considerations
+## PI-08 integration
 
-- Model-generated actions are untrusted input and must be parsed as structured
-  data, not evaluated or interpolated into executable code.
-- Tool dispatch must use an internal enum-to-handler map; no reflection,
-  dynamic imports, shell commands, arbitrary URLs, or arbitrary HTTP methods.
-- Source URLs must be selected from server-returned source records. Validate
-  scheme and host policy before any inspection call to prevent SSRF.
-- Topic, clarification answers, search results, and source content must remain
-  clearly separated from system instructions and tool control data.
-- Logs may include mode, action type, counter values, and safe reason codes, but
-  not topic text, answers, source content, prompts, provider bodies, or secrets.
-- Limits are immutable per run and cannot be changed by an action, tool result,
-  or client request field.
+- Replace only the PI-06 Agent 501 branch with a loop over these
+  contracts. Do not read `limits`/`tools` from the request.
+- Static system prompt; context via `format_research_context`; tool
+  results in delimited user/tool messages.
+- Emailer runs after terminal success, not as a tool.
+- Unauthenticated Agent is a cost switch; these caps are the demo bound.
+- Indirect prompt injection via Tavily snippets is accepted residual;
+  envelopes and role/delimiters reduce it, they do not prove obedience.
 
 ## Success criteria
 
 - PI-08 has typed contracts for every allowlisted action and result.
-- The contract can represent autonomous plan revision without permitting
-  changes to limits or permissions.
-- Every operation has a pre-I/O limit check and bounded result shape.
-- Invalid, unknown, terminal-after-terminal, and over-limit actions are
-  rejected deterministically.
-- Source inspection cannot be used as an arbitrary URL fetch.
-- Terminal success and failure are distinct and cannot be confused with a
-  partial report.
-- Provider failures and cancellation have safe typed mappings.
-- Tests demonstrate that untrusted model/provider content cannot expand tool
-  authority, limits, or terminal success.
+- `inspect_source` accepts only a known `source_id` and never a URL or
+  generic HTTP fetch.
+- `revise_plan` can change queries only.
+- Every operation has a pre-I/O limit check and a bounded result envelope.
+- Terminal success is only a validated `Report` from `write_report` over
+  server-held sources.
+- Invalid, unknown, extra-field, over-limit, and post-terminal actions are
+  rejected deterministically with reason codes.
 - Existing Code tests and behavior remain unchanged.
 
 ## Test plan
 
-### Contract and validation tests
+### Contract and validation
 
 Cover at least:
 
-- each valid action parses with only its allowlisted fields;
-- unknown action/tool names, malformed discriminators, extra control fields,
-  blank/control-character queries, and oversized text are rejected;
-- search results normalize to bounded `SourceArticle` values;
-- inspection accepts only a known returned source and rejects arbitrary,
-  internal, unsupported-scheme, or unbounded URLs;
-- plan revision preserves server-owned limits and permissions;
-- report results validate against the existing `Report` shape;
-- terminal states reject subsequent actions.
+- each valid action parses with only allowlisted fields;
+- unknown names, malformed discriminators, extra fields (`url` on inspect,
+  `limits` on any action), blank/C0/delimiter queries, and oversized text
+  are rejected;
+- search results become bounded envelopes with server `source_id`s;
+- inspect accepts a known id and rejects unknown ids, model URLs,
+  `file://`, `127.0.0.1`, and metadata hosts with no network call;
+- `revise_plan` cannot mutate context, limits, or sources;
+- `write_report` results validate as `Report` and ignore model-supplied
+  sources/recipient;
+- `finish` without a report is failure; success then rejects further
+  actions.
 
-### Limit and failure tests
+### Limits and failures
 
 Cover at least:
 
-- each counter is checked before provider I/O;
-- counters cannot exceed server defaults;
-- retries consume the tool-call budget;
-- repeated invalid actions terminate without provider calls;
-- provider failures become safe typed failures;
-- timeout/cancellation is terminal;
-- limit exhaustion never returns a successful partial report;
-- no sensitive input or provider content appears in exception text or logs.
+- counters reserved before I/O and not exceeded;
+- retries consume `tool_calls`;
+- three invalid actions terminate without provider calls;
+- provider failures are typed and exception text has no query/URL/body;
+- timeout reason is terminal;
+- limit exhaustion and `finish` without a report are not success.
 
-### Regression tests
+### Regression
 
-- Existing backend test suite passes unchanged.
-- Code orchestration does not import or invoke Agent tool handlers.
+- Existing backend suite passes.
+- Code orchestration does not import Agent tool handlers.
 
 ## Delivery plan
 
-1. Define the agent package boundaries and shared typed contracts.
-2. Add server-owned limit accounting and terminal-state transitions.
-3. Add action/result validation and safe source-reference handling.
-4. Add typed failure and cancellation semantics.
-5. Add focused contract, limit, security-boundary, and Code regression tests.
-6. Document PI-08 integration rules and residual risks in this plan.
-7. Run backend tests and lint; do not add Agent execution to this story.
-8. Open the independent PI-07 pull request after all exit criteria pass.
+1. Define the agent package, action union, envelopes, and state.
+2. Add limit accounting mapped to PI-01 fields plus report-attempt cap.
+3. Add validation: queries, `source_id` inspect, query-only plan revision,
+   write/finish success rules.
+4. Add typed failure, retry, invalid-action threshold, and timeout
+   reasons.
+5. Add contract, SSRF-negative, limit, and Code regression tests.
+6. Record PI-08 rules and residuals in this plan (this document).
+7. Run backend tests and lint; do not add Agent execution.
+8. Open the PI-07 pull request after exit criteria pass.
 
 ## Exit criteria
 
-- [ ] Typed Agent actions, results, state, and terminal outcomes exist.
-- [ ] Search, source inspection, plan revision, report, and finish are the
-      only allowlisted operations.
-- [ ] Limits are server-owned, checked before I/O, and immutable per run.
-- [ ] Source inspection is restricted to known safe source references.
-- [ ] Invalid actions, provider failures, cancellation, and limit exhaustion
-      have typed non-success outcomes.
-- [ ] No Agent execution or Code-path behavior changes are included.
-- [ ] Contract, bounds, failure, security-boundary, and regression tests pass.
-- [ ] Backend test suite and Ruff pass.
-- [ ] No secrets or unrelated story changes are included.
-- [ ] This plan documents PI-08 integration constraints and residual risks.
-- [ ] Pull request is opened from `pi-07-agent-orchestration-contracts` and
-      links to this document.
+- [x] Typed actions, envelopes, state, and terminal outcomes exist.
+- [x] Only the five allowlisted operations parse; extra fields are
+      forbidden.
+- [x] Inspect is `source_id` → Tavily/searcher extract only.
+- [x] Limits are server-owned, mapped per action, checked before I/O, and
+      immutable per run.
+- [x] Success is only a validated `Report` from `write_report`; other stops
+      are typed failure.
+- [x] Invalid actions, provider failures, timeout, and limit exhaustion
+      use reason codes without sensitive exception text.
+- [x] No Agent loop or Code-path behavior changes.
+- [x] Contract, bounds, inspect-negative, failure, and regression tests
+      pass.
+- [x] Backend test suite and Ruff pass.
+- [x] No secrets or unrelated story changes are included.
+- [x] This plan documents PI-08 constraints and residual risks.
+- [ ] Pull request is opened from `pi-07-agent-orchestration-contracts`
+      and links to this document.
+
+## Implementation notes
+
+- Added `backend/app/agent` contracts with strict discriminated actions,
+  bounded source envelopes, typed terminal outcomes, and a provider-facing
+  executor protocol. The package is not imported by the Code orchestrator.
+- Added pre-I/O reservations for iterations, tool calls, searches, retries,
+  plan revisions, report attempts, source capacity, and invalid-action
+  termination. Limits are taken from a server-built run and cannot be changed
+  by an action.
+- Restricted source inspection to server-assigned `source_id` values and
+  rejected model URL fields, prompt delimiters, control characters, and
+  unknown source references before network access.
+- Added typed provider, timeout, cancellation, invalid-action, limit, and
+  finish-without-report outcomes. Only a validated `Report` transitions state
+  to terminal success.
+- Validation passed: 80 backend tests and Ruff. The existing Starlette/httpx
+  deprecation warning remains non-blocking.
