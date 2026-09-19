@@ -34,3 +34,20 @@ export interface ResearchResult {
   sources: SourceArticle[]
   email: EmailResult
 }
+
+export interface ClarificationQuestion {
+  id: string
+  question: string
+  purpose: string
+}
+
+export interface ClarificationDecision {
+  needs_clarification: boolean
+  questions: ClarificationQuestion[]
+}
+
+export interface ClarificationAnswer {
+  question_id: string
+  question: string
+  answer: string
+}

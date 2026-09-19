@@ -2,6 +2,8 @@ from unittest.mock import patch
 
 from fastapi.testclient import TestClient
 
+from app.clarification.exceptions import ClarificationError
+from app.clarification.schemas import ClarificationDecision, ClarificationQuestion
 from app.emailer.schemas import EmailResult
 from app.main import TOPIC_MAX_LENGTH, app
 from app.orchestrator import ResearchResult
@@ -63,3 +65,45 @@ def test_research_returns_502_when_pipeline_fails() -> None:
 
     assert response.status_code == 502
     assert response.json()["detail"] == "Research failed, please try again"
+
+
+def test_clarify_returns_decision_for_topic_only_request() -> None:
+    decision = ClarificationDecision(
+        needs_clarification=True,
+        questions=[
+            ClarificationQuestion(
+                id="q1", question="Which timeframe?", purpose="A timeframe narrows the research."
+            )
+        ],
+    )
+    with patch("app.main.decide_clarification", return_value=decision) as mock_decide:
+        response = client.post(
+            "/clarify",
+            json={"topic": "artificial intelligence in education", "limits": {"max_sources": 0}},
+        )
+
+    mock_decide.assert_called_once()
+    assert response.status_code == 200
+    assert response.json() == decision.model_dump(mode="json")
+
+
+def test_clarify_rejects_empty_topic() -> None:
+    response = client.post("/clarify", json={"topic": "   "})
+
+    assert response.status_code == 422
+
+
+def test_clarify_maps_clarification_failure_to_generic_502() -> None:
+    with patch("app.main.decide_clarification", side_effect=ClarificationError):
+        response = client.post("/clarify", json={"topic": "topic"})
+
+    assert response.status_code == 502
+    assert response.json() == {"detail": "Clarification failed"}
+
+
+def test_clarify_maps_unexpected_failure_to_generic_502() -> None:
+    with patch("app.main.decide_clarification", side_effect=RuntimeError("provider details")):
+        response = client.post("/clarify", json={"topic": "topic"})
+
+    assert response.status_code == 502
+    assert response.json() == {"detail": "Clarification failed"}

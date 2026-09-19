@@ -7,8 +7,10 @@ from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import FileResponse
 from pydantic import BaseModel, Field
 
+from app.clarification import ClarificationDecision, ClarificationError, decide_clarification
 from app.config import settings
 from app.orchestrator import ResearchResult, run_research
+from app.research.schemas import ResearchContext
 
 logger = logging.getLogger(__name__)
 
@@ -31,6 +33,23 @@ class ResearchRequest(BaseModel):
 @app.get("/health")
 def health() -> dict[str, str]:
     return {"status": "ok"}
+
+
+@app.post("/clarify")
+def clarify(request: ResearchRequest) -> ClarificationDecision:
+    topic = request.topic.strip()
+    if not topic:
+        raise HTTPException(status_code=422, detail="Topic must not be empty")
+
+    try:
+        context = ResearchContext(topic=topic)
+        return decide_clarification(context)
+    except ClarificationError:
+        logger.error("Clarification failed: ClarificationError")
+        raise HTTPException(status_code=502, detail="Clarification failed") from None
+    except Exception as err:
+        logger.error("Clarification failed: %s", type(err).__name__)
+        raise HTTPException(status_code=502, detail="Clarification failed") from None
 
 
 @app.post("/research")

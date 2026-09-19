@@ -266,20 +266,36 @@ Cover at least:
 
 ## Exit criteria
 
-- [ ] `POST /clarify` is implemented with server-owned limits and a
+- [x] `POST /clarify` is implemented with server-owned limits and a
       topic-only request body.
-- [ ] Clarification UI, frozen topic, and answer collection are implemented.
-- [ ] Typed client state preserves topic and service-owned question ids for
+- [x] Clarification UI, frozen topic, and answer collection are implemented.
+- [x] Typed client state preserves topic and service-owned question ids for
       PI-05 without sending answers to `/research` yet.
-- [ ] Browser validation, loading, retry, and failure states are complete.
-- [ ] Model-produced text is rendered only as text.
-- [ ] No browser-controlled model, client, limit, or provider override
+- [x] Browser validation, loading, retry, and failure states are complete.
+- [x] Model-produced text is rendered only as text.
+- [x] No browser-controlled model, client, limit, or provider override
       exists, including on the new route.
-- [ ] HTTP errors are generic and logs do not include topic, questions, or
+- [x] HTTP errors are generic and logs do not include topic, questions, or
       answers.
-- [ ] Frontend and backend tests cover the required behavior.
-- [ ] Existing lint/build and direct research behavior pass.
-- [ ] No secrets or unrelated story changes are included.
-- [ ] This plan reflects the final design and API boundary.
+- [x] Frontend and backend tests cover the required behavior.
+- [x] Existing lint/build and direct research behavior pass.
+- [x] No secrets or unrelated story changes are included.
+- [x] This plan reflects the final design and API boundary.
 - [ ] Pull request is opened from `pi-04-clarification-ui` and links to this
       document.
+
+## Implementation notes
+
+- Added the topic-only `POST /clarify` route with server-owned PI-01 limits,
+  generic 422/502 responses, and type-only failure logging.
+- Added a typed frontend API adapter that validates clarification response
+  shape, ids, bounds, duplicates, and decision invariants before rendering.
+- Added the clarification form with a frozen topic, read-only question text,
+  bounded answers, accessible labels, duplicate-submit prevention, retry
+  preservation, and start-over behavior.
+- Answers remain in typed client state for PI-05 and are intentionally not
+  sent to the topic-only `/research` endpoint yet.
+- Added a minimal Vitest and Testing Library setup for frontend behavior
+  coverage.
+- Validation: 52 backend tests passed, 3 frontend tests passed, Ruff passed,
+  frontend lint passed, and frontend build passed.

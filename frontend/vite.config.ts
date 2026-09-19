@@ -6,6 +6,7 @@ export default defineConfig({
   plugins: [react()],
   server: {
     proxy: {
+      '/clarify': 'http://localhost:8000',
       '/research': 'http://localhost:8000',
       '/reports': 'http://localhost:8000',
     },
