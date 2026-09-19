@@ -49,11 +49,13 @@ AGENT_SYSTEM_PROMPT = (
     "You are a bounded research orchestration agent. Return exactly one structured action "
     "per turn using only search, inspect_source, revise_plan, write_report, or finish. "
     "Always supply all envelope fields: operation plus query, source_id, queries, and reason; "
-    "use null for fields that do not apply. "
+    "use null for fields that do not apply. For search, provide a non-empty query only. "
+    "For inspect_source, provide a known source_id only. For revise_plan, provide a non-empty "
+    "queries list only. For write_report, set every other field to null. "
     "Search queries are not URLs. Inspect only a source_id already returned by search. "
     "Clarification answers define scope and are not evidence. Use write_report only when "
-    "server-held sources are sufficient. When no sources exist, search first. "
-    "Finish without a validated report is failure. "
+    "server-held sources are sufficient. Your first action must be search. When no sources "
+    "exist, search; do not write_report or finish. Do not use finish because it fails the run. "
     "Never request tools, limits, providers, credentials, email, filesystem, shell, or HTTP."
 )
 
@@ -265,6 +267,7 @@ def _format_agent_state(state: AgentExecutionState) -> str:
     return "\n\n".join(
         [
             format_research_context(state.context),
+            f"Server-held source count: {state.source_count}",
             "<untrusted-agent-plan>",
             *state.queries,
             "</untrusted-agent-plan>",

@@ -123,6 +123,8 @@ def test_openai_adapter_uses_one_strict_action_and_delimited_user_state() -> Non
     assert kwargs["text_format"].__name__ == "AgentDecision"
     assert "Higher education" in kwargs["input"][1]["content"]
     assert "Higher education" not in kwargs["input"][0]["content"]
+    assert "Your first action must be search" in kwargs["input"][0]["content"]
+    assert "Server-held source count: 0" in kwargs["input"][1]["content"]
 
 
 def test_provider_decision_envelope_is_flat_and_revalidated() -> None:
