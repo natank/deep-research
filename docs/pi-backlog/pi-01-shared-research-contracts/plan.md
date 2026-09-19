@@ -151,11 +151,21 @@ API boundary after the contracts are established and tested.
 
 ## Exit criteria
 
-- [ ] All in-scope contracts are implemented and documented.
-- [ ] Validation and backward-compatibility tests are passing.
-- [ ] Existing backend and frontend behavior is unchanged.
-- [ ] Targeted tests and linting pass.
-- [ ] No secrets or unrelated story changes are included.
-- [ ] This plan reflects the final design.
+- [x] All in-scope contracts are implemented and documented.
+- [x] Validation and backward-compatibility tests are passing.
+- [x] Existing backend and frontend behavior is unchanged.
+- [x] Targeted tests and linting pass.
+- [x] No secrets or unrelated story changes are included.
+- [x] This plan reflects the final design.
 - [ ] Pull request is opened from `pi-01-shared-research-contracts` and links
   to this document.
+
+## Implementation notes
+
+- Added the neutral `app.research` package with Pydantic contracts for context,
+  clarification answers, orchestration mode, run status, limits, metrics, and
+  run state.
+- Used `StrEnum` for serialized mode and status values.
+- Kept the existing `/research` request and `ResearchResult` response unchanged;
+  later stories can adopt the shared contracts at the API boundary.
+- Full backend validation: 29 tests passed and Ruff passed.
