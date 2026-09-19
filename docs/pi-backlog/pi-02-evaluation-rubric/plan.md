@@ -164,16 +164,25 @@ duration, completion status, and API usage counters.
 
 ## Exit criteria
 
-- [ ] `rubric.md` defines all required dimensions, scoring anchors, and metric
+- [x] `rubric.md` defines all required dimensions, scoring anchors, and metric
   collection methods.
-- [ ] `topics.md` contains all five representative topics, rationale, expected
+- [x] `topics.md` contains all five representative topics, rationale, expected
   behaviors, and clarification expectations.
-- [ ] `run-protocol.md` defines paired runs, repetitions, fixed conditions, and
+- [x] `run-protocol.md` defines paired runs, repetitions, fixed conditions, and
   failure handling.
-- [ ] `result-template.md` supports run-level, topic-level, and overall
+- [x] `result-template.md` supports run-level, topic-level, and overall
   findings.
-- [ ] Limitations, reviewer guidance, and unresolved decisions are documented.
-- [ ] The artifacts are consistent with PI-01 and contain no secrets or
+- [x] Limitations, reviewer guidance, and unresolved decisions are documented.
+- [x] The artifacts are consistent with PI-01 and contain no secrets or
   unnecessary private/source content.
 - [ ] Pull request is opened from `pi-02-evaluation-rubric` and links to this
   document.
+
+## Delivery notes
+
+- The five topics are intentionally a small demonstration dataset, not a
+  statistically significant benchmark.
+- The protocol requires paired runs and recommends two repetitions per mode and
+  topic when API budget allows.
+- Quality dimensions use a 1-5 anchored scale; operational dimensions remain
+  raw measurements with explicit tradeoff discussion.
