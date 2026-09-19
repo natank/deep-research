@@ -4,6 +4,7 @@ import pytest
 
 from app.planner.schemas import SearchPlan, SearchQuery
 from app.planner.service import MAX_QUERIES, create_search_plan
+from app.research.schemas import ClarificationAnswer, ResearchContext
 
 
 def _mock_client(plan: SearchPlan | None) -> MagicMock:
@@ -29,6 +30,30 @@ def test_create_search_plan_returns_parsed_plan() -> None:
     _, kwargs = client.responses.parse.call_args
     assert kwargs["text_format"] is SearchPlan
     assert "solid-state batteries" in kwargs["input"][-1]["content"]
+
+
+def test_create_search_plan_delimits_clarification_as_scope() -> None:
+    context = ResearchContext(
+        topic="AI in education",
+        clarification_answers=[
+            ClarificationAnswer(
+                question_id="q1",
+                question="Which level?",
+                answer="Higher education",
+            )
+        ],
+    )
+    client = _mock_client(SearchPlan(topic=context.topic, queries=[]))
+
+    create_search_plan(context, client=client)
+
+    _, kwargs = client.responses.parse.call_args
+    system_content = kwargs["input"][0]["content"]
+    user_content = kwargs["input"][1]["content"]
+    assert "Higher education" not in system_content
+    assert "<untrusted-research-topic>" in user_content
+    assert "<untrusted-clarification>" in user_content
+    assert "Higher education" in user_content
 
 
 def test_create_search_plan_caps_queries_at_max() -> None:

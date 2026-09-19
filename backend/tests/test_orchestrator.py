@@ -3,6 +3,7 @@ from unittest.mock import patch
 from app.emailer.schemas import EmailResult
 from app.orchestrator import run_research
 from app.planner.schemas import SearchPlan, SearchQuery
+from app.research.schemas import ResearchContext
 from app.searcher.schemas import SourceArticle
 from app.writer.schemas import ChartData, ChartDataPoint, Report
 
@@ -41,9 +42,10 @@ def test_run_research_wires_components_in_order() -> None:
     ):
         result = run_research("topic")
 
-    mock_plan.assert_called_once_with("topic")
+    context = ResearchContext(topic="topic")
+    mock_plan.assert_called_once_with(context)
     mock_search.assert_called_once_with(plan)
-    mock_write.assert_called_once_with("topic", sources)
+    mock_write.assert_called_once_with(context, sources)
     mock_send.assert_called_once_with(report)
     assert result.report == report
     assert result.sources == sources

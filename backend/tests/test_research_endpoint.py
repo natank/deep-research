@@ -7,6 +7,7 @@ from app.clarification.schemas import ClarificationDecision, ClarificationQuesti
 from app.emailer.schemas import EmailResult
 from app.main import TOPIC_MAX_LENGTH, app
 from app.orchestrator import ResearchResult
+from app.research.schemas import ClarificationAnswer, ResearchContext
 from app.searcher.schemas import SourceArticle
 from app.writer.schemas import ChartData, ChartDataPoint, Report
 
@@ -32,12 +33,52 @@ def test_research_returns_report_and_email_status() -> None:
     with patch("app.main.run_research", return_value=_result()) as mock_run:
         response = client.post("/research", json={"topic": "solid-state batteries"})
 
-    mock_run.assert_called_once_with("solid-state batteries")
+    mock_run.assert_called_once_with(
+        ResearchContext(topic="solid-state batteries", clarification_answers=[])
+    )
     assert response.status_code == 200
     body = response.json()
     assert body["report"]["topic"] == "topic"
     assert body["sources"][0]["url"] == "https://a.com"
     assert body["email"]["status"] == "sent"
+
+
+def test_research_passes_clarification_context_to_pipeline() -> None:
+    answer = {
+        "question_id": "q1",
+        "question": "Which timeframe?",
+        "answer": "Since 2020",
+    }
+    with patch("app.main.run_research", return_value=_result()) as mock_run:
+        response = client.post(
+            "/research",
+            json={"topic": "topic", "clarification_answers": [answer]},
+        )
+
+    mock_run.assert_called_once_with(
+        ResearchContext(
+            topic="topic",
+            clarification_answers=[ClarificationAnswer(**answer)],
+        )
+    )
+    assert response.status_code == 200
+
+
+def test_research_rejects_invalid_clarification_context_before_pipeline() -> None:
+    with patch("app.main.run_research") as mock_run:
+        response = client.post(
+            "/research",
+            json={
+                "topic": "topic",
+                "clarification_answers": [
+                    {"question_id": "q1", "question": "Which?", "answer": "one"},
+                    {"question_id": "q1", "question": "Duplicate?", "answer": "two"},
+                ],
+            },
+        )
+
+    assert response.status_code == 422
+    mock_run.assert_not_called()
 
 
 def test_research_rejects_empty_topic() -> None:
@@ -60,11 +101,21 @@ def test_research_accepts_topic_at_max_length() -> None:
 
 
 def test_research_returns_502_when_pipeline_fails() -> None:
-    with patch("app.main.run_research", side_effect=RuntimeError("boom")):
-        response = client.post("/research", json={"topic": "topic"})
+    with patch("app.main.run_research", side_effect=RuntimeError("topic and answer")):
+        response = client.post(
+            "/research",
+            json={
+                "topic": "topic",
+                "clarification_answers": [
+                    {"question_id": "q1", "question": "Which?", "answer": "answer"}
+                ],
+            },
+        )
 
     assert response.status_code == 502
     assert response.json()["detail"] == "Research failed, please try again"
+    assert "topic" not in response.text
+    assert "answer" not in response.text
 
 
 def test_clarify_returns_decision_for_topic_only_request() -> None:

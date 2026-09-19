@@ -2,6 +2,8 @@ from openai import OpenAI
 
 from app.config import settings
 from app.planner.schemas import SearchPlan
+from app.research.formatting import format_research_context
+from app.research.schemas import ResearchContext
 
 MIN_QUERIES = 3
 MAX_QUERIES = 8
@@ -15,14 +17,19 @@ SYSTEM_PROMPT = (
 )
 
 
-def create_search_plan(topic: str, *, client: OpenAI | None = None) -> SearchPlan:
+def create_search_plan(
+    context: ResearchContext | str, *, client: OpenAI | None = None
+) -> SearchPlan:
+    research_context = (
+        context if isinstance(context, ResearchContext) else ResearchContext(topic=context)
+    )
     openai_client = client or OpenAI(api_key=settings.openai_api_key)
 
     response = openai_client.responses.parse(
         model=settings.openai_model,
         input=[
             {"role": "system", "content": SYSTEM_PROMPT},
-            {"role": "user", "content": f"Topic: {topic}"},
+            {"role": "user", "content": format_research_context(research_context)},
         ],
         text_format=SearchPlan,
     )

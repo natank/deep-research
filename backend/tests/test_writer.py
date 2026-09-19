@@ -2,6 +2,7 @@ from unittest.mock import MagicMock
 
 import pytest
 
+from app.research.schemas import ClarificationAnswer, ResearchContext
 from app.searcher.schemas import SourceArticle
 from app.writer.schemas import ChartData, ChartDataPoint, Report
 from app.writer.service import write_report
@@ -50,3 +51,31 @@ def test_write_report_raises_when_unparsed() -> None:
 
     with pytest.raises(ValueError, match="did not return a parseable report"):
         write_report("topic", [_source()], client=client)
+
+
+def test_write_report_keeps_clarification_out_of_sources_and_system_prompt() -> None:
+    client = _mock_client(
+        Report(
+            topic="topic",
+            summary="summary",
+            insights=[],
+            chart=ChartData(title="chart", points=[]),
+        )
+    )
+    context = ResearchContext(
+        topic="topic",
+        clarification_answers=[
+            ClarificationAnswer(question_id="q1", question="Audience?", answer="Researchers")
+        ],
+    )
+
+    write_report(context, [_source()], client=client)
+
+    _, kwargs = client.responses.parse.call_args
+    system_content = kwargs["input"][0]["content"]
+    user_content = kwargs["input"][1]["content"]
+    assert "Researchers" not in system_content
+    assert "<untrusted-clarification>" in user_content
+    assert user_content.index("</untrusted-clarification>") < user_content.index(
+        "<research-sources>"
+    )

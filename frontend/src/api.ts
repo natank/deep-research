@@ -1,4 +1,5 @@
 import type {
+  ClarificationAnswer,
   ClarificationDecision,
   ClarificationQuestion,
   ResearchResult,
@@ -64,7 +65,7 @@ function parseClarificationDecision(value: unknown): ClarificationDecision {
   return { needs_clarification: value.needs_clarification, questions }
 }
 
-async function postJson<T>(path: string, body: Record<string, string>): Promise<T> {
+async function postJson<T>(path: string, body: Record<string, unknown>): Promise<T> {
   const controller = new AbortController()
   const timeout = setTimeout(() => controller.abort(), REQUEST_TIMEOUT_MS)
 
@@ -103,8 +104,14 @@ export async function requestClarification(topic: string): Promise<Clarification
   return parseClarificationDecision(decision)
 }
 
-export function requestResearch(topic: string): Promise<ResearchResult> {
-  return postJson<ResearchResult>('/research', { topic })
+export function requestResearch(
+  topic: string,
+  clarificationAnswers: ClarificationAnswer[] = [],
+): Promise<ResearchResult> {
+  return postJson<ResearchResult>('/research', {
+    topic,
+    ...(clarificationAnswers.length > 0 ? { clarification_answers: clarificationAnswers } : {}),
+  })
 }
 
 export { MAX_QUESTIONS, QUESTION_TEXT_MAX_LENGTH, TOPIC_MAX_LENGTH }

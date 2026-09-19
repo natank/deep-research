@@ -271,24 +271,39 @@ Cover at least:
 
 ## Exit criteria
 
-- [ ] Shared models enforce id pattern, uniqueness, list cap, and
+- [x] Shared models enforce id pattern, uniqueness, list cap, and
       question/answer length; `/research` uses them.
-- [ ] Topic-only requests remain backward compatible.
-- [ ] One `ResearchContext` flows through Planner, Searcher, Writer, and
+- [x] Topic-only requests remain backward compatible.
+- [x] One `ResearchContext` flows through Planner, Searcher, Writer, and
       Emailer.
-- [ ] Topic and Q&A appear only in delimited user messages; system prompts
+- [x] Topic and Q&A appear only in delimited user messages; system prompts
       stay static; Writer treats answers as scope, not sources.
-- [ ] Searcher does not receive raw answers; search/source caps are
+- [x] Searcher does not receive raw answers; search/source caps are
       unchanged.
-- [ ] `/research` 422s invalid context before external calls and 502s
+- [x] `/research` 422s invalid context before external calls and 502s
       without logging or returning topic, questions, or answers.
-- [ ] Frontend sends collected answers only to `/research` with the frozen
+- [x] Frontend sends collected answers only to `/research` with the frozen
       topic.
-- [ ] Tests cover compatibility, validation, prompt placement, and the
+- [x] Tests cover compatibility, validation, prompt placement, and the
       Searcher boundary.
-- [ ] Full backend tests/lint and frontend tests/lint/build pass.
-- [ ] No secrets or unrelated story changes are included.
-- [ ] This plan reflects the final design, including the accepted
+- [x] Full backend tests/lint and frontend tests/lint/build pass.
+- [x] No secrets or unrelated story changes are included.
+- [x] This plan reflects the final design, including the accepted
       model-following and forged-Q&A residuals.
 - [ ] Pull request is opened from `pi-05-clarified-context` and links to
       this document.
+
+## Implementation notes
+
+- Tightened PI-01 shared context models with bounded question/answer fields,
+  ID format and uniqueness validation, control-character rejection, and
+  delimiter-closer rejection.
+- Added one shared context formatter used by Planner and Writer. Topic and Q&A
+  appear only in delimited user messages; Writer keeps sources in a separate
+  block and treats answers as scope rather than evidence.
+- Updated `/research` to accept validated optional answers while preserving
+  topic-only requests and generic type-only failure logging.
+- Updated the frontend adapter to send frozen-topic answers only to
+  `/research`; `/clarify` remains topic-only.
+- Validation: 57 backend tests passed, Ruff passed, 3 frontend tests passed,
+  frontend lint passed, and frontend build passed.
