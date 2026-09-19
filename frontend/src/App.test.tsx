@@ -1,7 +1,7 @@
 import { cleanup, fireEvent, render, screen, waitFor } from '@testing-library/react'
 import { beforeEach, describe, expect, it, vi } from 'vitest'
 import App from './App'
-import { requestClarification, requestResearch } from './api'
+import { ApiError, requestClarification, requestResearch } from './api'
 import type { ResearchResult } from './types'
 
 vi.mock('./api', async () => {
@@ -41,8 +41,33 @@ describe('clarification flow', () => {
     fireEvent.change(screen.getByLabelText('Research topic'), { target: { value: 'topic' } })
     fireEvent.click(screen.getByRole('button', { name: 'Research' }))
 
-    await waitFor(() => expect(mockedRequestResearch).toHaveBeenCalledWith('topic', []))
+    await waitFor(() => expect(mockedRequestResearch).toHaveBeenCalledWith('topic', [], 'code'))
     expect(screen.queryByRole('heading', { name: 'Clarify your research' })).not.toBeInTheDocument()
+  })
+
+  it('sends the selected mode and preserves it through clarification', async () => {
+    mockedRequestClarification.mockResolvedValue({
+      needs_clarification: true,
+      questions: [{ id: 'q1', question: 'Which timeframe?', purpose: 'This narrows the search.' }],
+    })
+    mockedRequestResearch.mockResolvedValue(result)
+    render(<App />)
+
+    fireEvent.click(screen.getByLabelText('Agent'))
+    fireEvent.change(screen.getByLabelText('Research topic'), { target: { value: 'topic' } })
+    fireEvent.click(screen.getByRole('button', { name: 'Research' }))
+
+    await screen.findByRole('heading', { name: 'Clarify your research' })
+    fireEvent.change(screen.getByLabelText('Your answer'), { target: { value: 'Since 2020' } })
+    fireEvent.click(screen.getByRole('button', { name: 'Research with these answers' }))
+
+    await waitFor(() =>
+      expect(mockedRequestResearch).toHaveBeenCalledWith(
+        'topic',
+        [{ question_id: 'q1', question: 'Which timeframe?', answer: 'Since 2020' }],
+        'agent',
+      ),
+    )
   })
 
   it('renders questions and requires answers before continuing', async () => {
@@ -66,8 +91,23 @@ describe('clarification flow', () => {
     await waitFor(() =>
       expect(mockedRequestResearch).toHaveBeenCalledWith('topic', [
         { question_id: 'q1', question: 'Which timeframe?', answer: 'Since 2020' },
-      ]),
+      ], 'code'),
     )
+  })
+
+  it('shows the Agent unsupported response without rendering a report', async () => {
+    mockedRequestClarification.mockResolvedValue({ needs_clarification: false, questions: [] })
+    mockedRequestResearch.mockRejectedValue(new ApiError('Agent orchestration is not available yet'))
+    render(<App />)
+
+    fireEvent.click(screen.getByLabelText('Agent'))
+    fireEvent.change(screen.getByLabelText('Research topic'), { target: { value: 'topic' } })
+    fireEvent.click(screen.getByRole('button', { name: 'Research' }))
+
+    expect(await screen.findByRole('alert')).toHaveTextContent(
+      'Agent orchestration is not available yet',
+    )
+    expect(screen.queryByRole('heading', { name: 'summary' })).not.toBeInTheDocument()
   })
 
   it('preserves the question form after a clarification failure', async () => {

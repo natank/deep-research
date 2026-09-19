@@ -2,6 +2,7 @@ import type {
   ClarificationAnswer,
   ClarificationDecision,
   ClarificationQuestion,
+  OrchestrationMode,
   ResearchResult,
 } from './types'
 
@@ -107,10 +108,12 @@ export async function requestClarification(topic: string): Promise<Clarification
 export function requestResearch(
   topic: string,
   clarificationAnswers: ClarificationAnswer[] = [],
+  orchestrationMode: OrchestrationMode = 'code',
 ): Promise<ResearchResult> {
   return postJson<ResearchResult>('/research', {
     topic,
     ...(clarificationAnswers.length > 0 ? { clarification_answers: clarificationAnswers } : {}),
+    orchestration_mode: orchestrationMode,
   })
 }
 

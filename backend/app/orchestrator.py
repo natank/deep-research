@@ -10,6 +10,10 @@ from app.writer.schemas import Report
 from app.writer.service import write_report
 
 
+class UnsupportedOrchestrationMode(RuntimeError):
+    """Raised when a selected orchestration mode is not implemented."""
+
+
 class ResearchResult(BaseModel):
     report: Report
     sources: list[SourceArticle]

@@ -44,6 +44,31 @@ main {
   color: var(--text);
 }
 
+.mode-selector {
+  display: flex;
+  gap: 16px;
+  border: 0;
+  padding: 0;
+  margin: 8px 0 0;
+  color: var(--text);
+}
+
+.mode-selector legend {
+  font-size: 14px;
+  margin-bottom: 6px;
+}
+
+.mode-selector label {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  font-size: 14px;
+}
+
+.mode-selector:disabled {
+  opacity: 0.5;
+}
+
 .topic-form-row {
   display: flex;
   gap: 12px;

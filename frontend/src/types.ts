@@ -35,6 +35,8 @@ export interface ResearchResult {
   email: EmailResult
 }
 
+export type OrchestrationMode = 'code' | 'agent'
+
 export interface ClarificationQuestion {
   id: string
   question: string

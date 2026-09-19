@@ -64,6 +64,47 @@ def test_research_passes_clarification_context_to_pipeline() -> None:
     assert response.status_code == 200
 
 
+def test_research_agent_mode_returns_501_without_pipeline_io() -> None:
+    with patch("app.main.run_research") as mock_run:
+        response = client.post(
+            "/research",
+            json={"topic": "topic", "orchestration_mode": "agent"},
+        )
+
+    assert response.status_code == 501
+    assert response.json() == {"detail": "Agent orchestration is not available yet"}
+    mock_run.assert_not_called()
+
+
+def test_research_rejects_unknown_orchestration_mode() -> None:
+    with patch("app.main.run_research") as mock_run:
+        response = client.post(
+            "/research",
+            json={"topic": "topic", "orchestration_mode": "compare"},
+        )
+
+    assert response.status_code == 422
+    mock_run.assert_not_called()
+
+
+def test_research_ignores_client_execution_controls() -> None:
+    with patch("app.main.run_research", return_value=_result()) as mock_run:
+        response = client.post(
+            "/research",
+            json={
+                "topic": "topic",
+                "orchestration_mode": "code",
+                "limits": {"max_tool_calls": 0},
+                "tools": ["untrusted-tool"],
+                "model": "client-model",
+                "api_key": "client-secret",
+            },
+        )
+
+    assert response.status_code == 200
+    mock_run.assert_called_once_with(ResearchContext(topic="topic", clarification_answers=[]))
+
+
 def test_research_rejects_invalid_clarification_context_before_pipeline() -> None:
     with patch("app.main.run_research") as mock_run:
         response = client.post(

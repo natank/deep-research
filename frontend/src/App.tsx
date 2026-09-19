@@ -3,7 +3,12 @@ import type { FormEvent } from 'react'
 import './App.css'
 import ReportChart from './ReportChart'
 import { ApiError, requestClarification, requestResearch } from './api'
-import type { ClarificationAnswer, ClarificationQuestion, ResearchResult } from './types'
+import type {
+  ClarificationAnswer,
+  ClarificationQuestion,
+  OrchestrationMode,
+  ResearchResult,
+} from './types'
 
 type RunState = 'idle' | 'checking' | 'questions' | 'loading' | 'error'
 
@@ -13,6 +18,7 @@ interface ClarificationSession {
   topic: string
   questions: ClarificationQuestion[]
   answers: Record<string, string>
+  orchestrationMode: OrchestrationMode
 }
 
 function App() {
@@ -21,6 +27,7 @@ function App() {
   const [error, setError] = useState<string | null>(null)
   const [result, setResult] = useState<ResearchResult | null>(null)
   const [clarification, setClarification] = useState<ClarificationSession | null>(null)
+  const [orchestrationMode, setOrchestrationMode] = useState<OrchestrationMode>('code')
 
   async function handleSubmit(event: FormEvent<HTMLFormElement>) {
     event.preventDefault()
@@ -38,7 +45,7 @@ function App() {
     try {
       const decision = await requestClarification(trimmedTopic)
       if (decision.questions.length === 0) {
-        await runResearch(trimmedTopic)
+        await runResearch(trimmedTopic, [], orchestrationMode)
         return
       }
 
@@ -46,6 +53,7 @@ function App() {
         topic: trimmedTopic,
         questions: decision.questions,
         answers: Object.fromEntries(decision.questions.map((question) => [question.id, ''])),
+        orchestrationMode,
       })
       setRunState('questions')
     } catch (err) {
@@ -54,11 +62,15 @@ function App() {
     }
   }
 
-  async function runResearch(researchTopic: string, clarificationAnswers: ClarificationAnswer[] = []) {
+  async function runResearch(
+    researchTopic: string,
+    clarificationAnswers: ClarificationAnswer[] = [],
+    mode: OrchestrationMode = 'code',
+  ) {
     setRunState('loading')
     setError(null)
     try {
-      setResult(await requestResearch(researchTopic, clarificationAnswers))
+      setResult(await requestResearch(researchTopic, clarificationAnswers, mode))
       setRunState('idle')
     } catch (err) {
       setError(err instanceof ApiError ? err.message : 'Research failed, please try again')
@@ -70,6 +82,11 @@ function App() {
     setClarification((current) =>
       current ? { ...current, answers: { ...current.answers, [questionId]: answer.slice(0, 500) } } : current,
     )
+  }
+
+  function updateOrchestrationMode(mode: OrchestrationMode) {
+    setOrchestrationMode(mode)
+    setClarification((current) => (current ? { ...current, orchestrationMode: mode } : current))
   }
 
   async function handleClarificationSubmit(event: FormEvent<HTMLFormElement>) {
@@ -97,7 +114,7 @@ function App() {
       return
     }
 
-    await runResearch(clarification.topic, answers)
+    await runResearch(clarification.topic, answers, clarification.orchestrationMode)
   }
 
   function handleStartOver() {
@@ -106,6 +123,7 @@ function App() {
     setResult(null)
     setError(null)
     setRunState('idle')
+    setOrchestrationMode('code')
   }
 
   const topicLocked = runState === 'checking' || runState === 'questions' || runState === 'loading'
@@ -148,6 +166,29 @@ function App() {
           <span id="topic-hint" className="topic-hint">
             {topic.length}/{TOPIC_MAX_LENGTH}
           </span>
+          <fieldset className="mode-selector" disabled={runState === 'checking' || runState === 'loading'}>
+            <legend>Orchestration mode</legend>
+            <label>
+              <input
+                type="radio"
+                name="orchestration-mode"
+                value="code"
+                checked={orchestrationMode === 'code'}
+                onChange={() => updateOrchestrationMode('code')}
+              />
+              Code
+            </label>
+            <label>
+              <input
+                type="radio"
+                name="orchestration-mode"
+                value="agent"
+                checked={orchestrationMode === 'agent'}
+                onChange={() => updateOrchestrationMode('agent')}
+              />
+              Agent
+            </label>
+          </fieldset>
         </form>
 
         {runState === 'loading' && (
