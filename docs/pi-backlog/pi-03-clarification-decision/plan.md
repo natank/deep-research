@@ -268,16 +268,29 @@ Mock the OpenAI client. Cover at least:
 
 ## Exit criteria
 
-- [ ] Clarification schemas and invariants are implemented, including id
+- [x] Clarification schemas and invariants are implemented, including id
       format, field max lengths, and secret-seeking rejection.
-- [ ] The decision service uses structured LLM output, a static system
+- [x] The decision service uses structured LLM output, a static system
       prompt, a delimited untrusted topic, and `ClarificationError`.
-- [ ] Configured question limits are enforced by rejection, not truncation.
+- [x] Configured question limits are enforced by rejection, not truncation.
       Limit zero skips the LLM.
-- [ ] Tests cover all required decision, failure, and adversarial cases.
-- [ ] Existing backend behavior remains unchanged.
-- [ ] Full backend tests and linting pass.
-- [ ] No secrets or unrelated story changes are included.
-- [ ] This plan reflects the final design.
+- [x] Tests cover all required decision, failure, and adversarial cases.
+- [x] Existing backend behavior remains unchanged.
+- [x] Full backend tests and linting pass.
+- [x] No secrets or unrelated story changes are included.
+- [x] This plan reflects the final design.
 - [ ] Pull request is opened from `pi-03-clarification-decision` and links to
       this document.
+
+## Implementation notes
+
+- Added `app.clarification` with structured decision/question schemas,
+  `ClarificationError`, and an injectable OpenAI-backed service.
+- Topics are validated through the PI-01 `ResearchContext` contract and placed
+  only in a delimited user message; the system prompt is static.
+- Model output is rejected, never truncated or silently repaired, when it
+  exceeds limits, contains duplicate or unsafe text, violates decision
+  invariants, or requests secrets/PII.
+- Question identifiers are reassigned to service-owned `q1`-style ids after
+  successful validation.
+- Full backend validation: 48 tests passed and Ruff passed.
