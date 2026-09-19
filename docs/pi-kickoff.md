@@ -47,20 +47,55 @@ The backlog is ordered by dependency and value. Each item should be delivered
 as a reviewable vertical slice where practical, with automated tests and
 documentation updated when behavior changes.
 
-| ID | Backlog item | Outcome | Depends on | Priority |
-|---|---|---|---|---|
-| PI-01 | Define shared research context and run contracts | Common models represent clarification answers, orchestration mode, run status, limits, and metrics without breaking the current API contract. | — | Must |
-| PI-02 | Define evaluation rubric and comparison dataset | Agreed measures and representative topics cover relevance, source quality, citation coverage, completion, latency, usage, repeatability, and adaptability. | — | Must |
-| PI-03 | Add clarification decision step | The app determines whether a topic needs clarification and returns a bounded set of focused questions. | PI-01 | Must |
-| PI-04 | Add clarification UI and answer submission | Users can answer questions, skip unnecessary clarification, and continue to research. | PI-03 | Must |
-| PI-05 | Pass clarified context through code orchestration | Answers influence the existing planner, searcher, writer, and report while the baseline flow remains reliable. | PI-04 | Must |
-| PI-06 | Add user-selected orchestration mode | Users can select **Code** or **Agent** before starting a research run. | PI-01 | Must |
-| PI-07 | Define bounded agent tools and stopping rules | Search, source inspection, and report-generation tools have explicit schemas, limits, failure behavior, and termination conditions. | PI-01 | Must |
-| PI-08 | Implement agent orchestration | Agent mode can autonomously revise the search plan, gather evidence, and produce the existing report shape within configured limits. | PI-05, PI-07 | Must |
-| PI-09 | Integrate agent mode into the end-to-end UI flow | All users can run the agent path, see progress and failures, and receive the same report, sources, visualization, and download experience. | PI-06, PI-08 | Must |
-| PI-10 | Capture comparable run metrics | Both modes record mode, searches, sources, iterations, duration, completion status, and API usage without logging secrets. | PI-06, PI-08 | Should |
-| PI-11 | Run the comparison study | Code and Agent modes are run against the agreed topic set with repeat runs where needed. | PI-02, PI-09, PI-10 | Must |
-| PI-12 | Publish findings and recommendation | Documentation summarizes tradeoffs, recommended use cases, risks, and follow-up work for each orchestration mode. | PI-11 | Must |
+These are **PI backlog stories**, but not all are user stories in the strict
+sense. Feature stories deliver user-visible behavior; enabler stories provide
+technical capabilities; spike stories answer design or discovery questions;
+experiment stories evaluate competing approaches; and documentation/decision
+stories record outcomes and recommendations.
+
+### Backlog documentation policy
+
+Each backlog story must have its own documentation folder under
+`docs/pi-backlog/`, using the story ID and a short kebab-case name, for example
+`docs/pi-backlog/pi-03-clarification-decision/`. Every story must include at
+least a `plan.md` in that folder before implementation begins. The plan must
+document the story's requirements, success criteria, design, delivery plan, and
+the level of documentation rigor required for the story.
+
+Documentation rigor is proportional to the story's complexity and risk. A
+small, low-risk story may use a concise document, while a story involving new
+agent behavior, external API usage, user-visible workflow changes, or
+significant failure modes should include deeper design detail, explicit
+constraints, alternatives, test scenarios, and rollout considerations. The
+plan should identify which of these details are required for that story. The
+goal is reasonable implementation certainty, not unnecessary paperwork.
+
+### Branch and pull-request policy
+
+Each backlog story must be implemented on its own feature branch, created from
+the latest `main` branch. Branches should use the story ID and a short
+kebab-case name, for example `pi-03-clarification-decision`.
+
+A pull request must be opened for the story branch only after its exit criteria
+are complete. The pull request should contain the implementation, tests,
+required documentation, and a link to the story's `plan.md`. Stories must be
+reviewed and merged independently; work for another backlog story should not be
+mixed into the pull request.
+
+| ID | Backlog item | Story type | Outcome | Depends on | Priority |
+|---|---|---|---|---|---|
+| PI-01 | Define shared research context and run contracts | Enabler | Common models represent clarification answers, orchestration mode, run status, limits, and metrics without breaking the current API contract. | — | Must |
+| PI-02 | Define evaluation rubric and comparison dataset | Spike | Agreed measures and representative topics cover relevance, source quality, citation coverage, completion, latency, usage, repeatability, and adaptability. | — | Must |
+| PI-03 | Add clarification decision step | Feature | The app determines whether a topic needs clarification and returns a bounded set of focused questions. | PI-01 | Must |
+| PI-04 | Add clarification UI and answer submission | Feature | Users can answer questions, skip unnecessary clarification, and continue to research. | PI-03 | Must |
+| PI-05 | Pass clarified context through code orchestration | Feature | Answers influence the existing planner, searcher, writer, and report while the baseline flow remains reliable. | PI-04 | Must |
+| PI-06 | Add user-selected orchestration mode | Feature | Users can select **Code** or **Agent** before starting a research run. | PI-01 | Must |
+| PI-07 | Define bounded agent tools and stopping rules | Enabler | Search, source inspection, and report-generation tools have explicit schemas, limits, failure behavior, and termination conditions. | PI-01 | Must |
+| PI-08 | Implement agent orchestration | Feature | Agent mode can autonomously revise the search plan, gather evidence, and produce the existing report shape within configured limits. | PI-05, PI-07 | Must |
+| PI-09 | Integrate agent mode into the end-to-end UI flow | Feature | All users can run the agent path, see progress and failures, and receive the same report, sources, visualization, and download experience. | PI-06, PI-08 | Must |
+| PI-10 | Capture comparable run metrics | Enabler | Both modes record mode, searches, sources, iterations, duration, completion status, and API usage without logging secrets. | PI-06, PI-08 | Should |
+| PI-11 | Run the comparison study | Experiment | Code and Agent modes are run against the agreed topic set with repeat runs where needed. | PI-02, PI-09, PI-10 | Must |
+| PI-12 | Publish findings and recommendation | Documentation/decision | Documentation summarizes tradeoffs, recommended use cases, risks, and follow-up work for each orchestration mode. | PI-11 | Must |
 
 ### Backlog completion standard
 
