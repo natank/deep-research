@@ -61,6 +61,10 @@ AgentAction = Annotated[
 ]
 
 
+class AgentDecision(_StrictModel):
+    action: AgentAction
+
+
 class SourceEnvelope(_StrictModel):
     source_id: str = Field(pattern=SOURCE_ID_PATTERN)
     title: str = Field(max_length=MAX_SOURCE_TITLE_LENGTH)

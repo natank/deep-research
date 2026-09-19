@@ -9,7 +9,7 @@ from pydantic import BaseModel, ConfigDict, Field, ValidationError
 
 from app.clarification import ClarificationDecision, ClarificationError, decide_clarification
 from app.config import settings
-from app.orchestrator import ResearchResult, UnsupportedOrchestrationMode, run_research
+from app.orchestrator import ResearchResult, run_agent, run_research
 from app.research.schemas import (
     MAX_CLARIFICATION_ANSWERS,
     ClarificationAnswer,
@@ -82,14 +82,10 @@ def research(request: ResearchRequest) -> ResearchResult:
             limits=ExecutionLimits(),
         )
         if run.orchestration_mode is OrchestrationMode.AGENT:
-            raise UnsupportedOrchestrationMode
+            return run_agent(run)
         return run_research(run.context)
     except ValidationError as err:
         raise HTTPException(status_code=422, detail="Invalid research context") from err
-    except UnsupportedOrchestrationMode:
-        raise HTTPException(
-            status_code=501, detail="Agent orchestration is not available yet"
-        ) from None
     except Exception as err:
         logger.error("Research pipeline failed: %s", type(err).__name__)
         raise HTTPException(status_code=502, detail="Research failed, please try again") from None

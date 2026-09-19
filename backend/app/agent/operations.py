@@ -60,6 +60,15 @@ def add_sources(state: AgentExecutionState, sources: list[SourceEnvelope]) -> No
     state.source_count += len(sources)
 
 
+def replace_source(state: AgentExecutionState, source: SourceEnvelope) -> None:
+    state.ensure_active()
+    for index, existing in enumerate(state.sources):
+        if existing.source_id == source.source_id:
+            state.sources[index] = source
+            return
+    raise AgentContractError
+
+
 def apply_plan_revision(state: AgentExecutionState, action: RevisePlanAction) -> list[str]:
     state.ensure_active()
     queries = validate_plan_queries(action.queries)

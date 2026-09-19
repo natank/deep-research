@@ -2,6 +2,7 @@ from unittest.mock import patch
 
 from fastapi.testclient import TestClient
 
+from app.agent.exceptions import AgentFailureReason, AgentRunError
 from app.clarification.exceptions import ClarificationError
 from app.clarification.schemas import ClarificationDecision, ClarificationQuestion
 from app.emailer.schemas import EmailResult
@@ -64,16 +65,42 @@ def test_research_passes_clarification_context_to_pipeline() -> None:
     assert response.status_code == 200
 
 
-def test_research_agent_mode_returns_501_without_pipeline_io() -> None:
-    with patch("app.main.run_research") as mock_run:
+def test_research_agent_mode_runs_agent_without_code_pipeline() -> None:
+    with (
+        patch("app.main.run_agent", return_value=_result()) as mock_agent,
+        patch("app.main.run_research") as mock_code,
+    ):
         response = client.post(
             "/research",
             json={"topic": "topic", "orchestration_mode": "agent"},
         )
 
-    assert response.status_code == 501
-    assert response.json() == {"detail": "Agent orchestration is not available yet"}
-    mock_run.assert_not_called()
+    assert response.status_code == 200
+    mock_agent.assert_called_once()
+    mock_code.assert_not_called()
+
+
+def test_research_agent_failure_is_generic_and_does_not_fallback() -> None:
+    with (
+        patch("app.main.run_agent", side_effect=AgentRunError(AgentFailureReason.PROVIDER_FAILURE)),
+        patch("app.main.run_research") as mock_code,
+    ):
+        response = client.post(
+            "/research",
+            json={
+                "topic": "sensitive topic",
+                "orchestration_mode": "agent",
+                "clarification_answers": [
+                    {"question_id": "q1", "question": "Which?", "answer": "private answer"}
+                ],
+            },
+        )
+
+    assert response.status_code == 502
+    assert response.json() == {"detail": "Research failed, please try again"}
+    assert "sensitive topic" not in response.text
+    assert "private answer" not in response.text
+    mock_code.assert_not_called()
 
 
 def test_research_rejects_unknown_orchestration_mode() -> None:
