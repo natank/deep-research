@@ -23,3 +23,15 @@ class AgentLimitError(AgentContractError):
 
     def __init__(self) -> None:
         super().__init__(AgentFailureReason.LIMIT_EXCEEDED)
+
+
+class AgentProviderError(RuntimeError):
+    """Raised when an external Agent provider operation fails."""
+
+
+class AgentRunError(RuntimeError):
+    """Raised when a bounded Agent run ends without a report."""
+
+    def __init__(self, reason: AgentFailureReason) -> None:
+        self.reason = reason
+        super().__init__(reason.value)
