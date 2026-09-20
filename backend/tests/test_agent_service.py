@@ -1,6 +1,7 @@
 from unittest.mock import MagicMock
 
 from app.agent.schemas import (
+    AgentDecision,
     AgentExecutionState,
     AgentOperation,
     AgentTerminalStatus,
@@ -104,7 +105,7 @@ def test_agent_finish_without_report_is_failure() -> None:
 def test_openai_adapter_uses_one_strict_action_and_delimited_user_state() -> None:
     client = MagicMock()
     client.responses.parse.return_value.output_parsed = MagicMock(
-        action={"operation": "search", "query": "query"}
+        model_dump=lambda **_: {"operation": "search", "query": "query"}
     )
     model = OpenAIAgentModel(client=client)
     model.choose_action(
@@ -122,3 +123,24 @@ def test_openai_adapter_uses_one_strict_action_and_delimited_user_state() -> Non
     assert kwargs["text_format"].__name__ == "AgentDecision"
     assert "Higher education" in kwargs["input"][1]["content"]
     assert "Higher education" not in kwargs["input"][0]["content"]
+    assert "Your first action must be search" in kwargs["input"][0]["content"]
+    assert "Server-held source count: 0" in kwargs["input"][1]["content"]
+
+
+def test_provider_decision_envelope_is_flat_and_revalidated() -> None:
+    decision = AgentDecision(
+        operation=AgentOperation.SEARCH,
+        query="query",
+        source_id=None,
+        queries=None,
+        reason=None,
+    )
+
+    assert decision.model_json_schema()["additionalProperties"] is False
+    assert set(decision.model_json_schema()["required"]) == {
+        "operation",
+        "query",
+        "source_id",
+        "queries",
+        "reason",
+    }

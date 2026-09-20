@@ -10,7 +10,6 @@ from tavily import TavilyClient
 from app.agent.exceptions import (
     AgentContractError,
     AgentFailureReason,
-    AgentLimitError,
     AgentProviderError,
 )
 from app.agent.limits import reserve_iteration
@@ -49,9 +48,14 @@ logger = logging.getLogger(__name__)
 AGENT_SYSTEM_PROMPT = (
     "You are a bounded research orchestration agent. Return exactly one structured action "
     "per turn using only search, inspect_source, revise_plan, write_report, or finish. "
+    "Always supply all envelope fields: operation plus query, source_id, queries, and reason; "
+    "use null for fields that do not apply. For search, provide a non-empty query only. "
+    "For inspect_source, provide a known source_id only. For revise_plan, provide a non-empty "
+    "queries list only. For write_report, set every other field to null. "
     "Search queries are not URLs. Inspect only a source_id already returned by search. "
     "Clarification answers define scope and are not evidence. Use write_report only when "
-    "server-held sources are sufficient. Finish without a validated report is failure. "
+    "server-held sources are sufficient. Your first action must be search. When no sources "
+    "exist, search; do not write_report or finish. Do not use finish because it fails the run. "
     "Never request tools, limits, providers, credentials, email, filesystem, shell, or HTTP."
 )
 
@@ -76,7 +80,10 @@ class OpenAIAgentModel:
         decision = response.output_parsed
         if decision is None:
             raise AgentContractError
-        return decision.action
+        try:
+            return parse_action(decision.model_dump(mode="json", exclude_none=True))
+        except AttributeError as err:
+            raise AgentContractError from err
 
 
 class AgentProviderExecutor:
@@ -98,7 +105,7 @@ class AgentProviderExecutor:
                     title=str(result.get("title", "")),
                     url=url,
                     content=str(result.get("content", "")),
-                    score=float(result.get("score", 0.0)),
+                    score=_source_score(result.get("score")),
                 )
                 source_id = f"src_{state.source_count + len(sources) + 1}"
                 sources.append(normalize_source(source_id, article))
@@ -159,9 +166,6 @@ class AgentProviderExecutor:
             ]
             report = write_report(run.context, sources)
             return ReportResult(operation=AgentOperation.WRITE_REPORT, report=report)
-        except AgentLimitError:
-            if state.terminal_outcome is None:
-                state.fail(AgentFailureReason.LIMIT_EXCEEDED)
         except AgentContractError:
             raise
         except Exception as err:
@@ -185,6 +189,9 @@ def execute_agent(
             _dispatch_action(state, run, provider, action)
         except AgentContractError:
             if state.terminal_outcome is None:
+                logger.warning(
+                    "Agent action rejected: reason=%s", AgentFailureReason.INVALID_ACTION
+                )
                 state.record_invalid_action()
         except AgentProviderError:
             if state.terminal_outcome is None:
@@ -260,6 +267,7 @@ def _format_agent_state(state: AgentExecutionState) -> str:
     return "\n\n".join(
         [
             format_research_context(state.context),
+            f"Server-held source count: {state.source_count}",
             "<untrusted-agent-plan>",
             *state.queries,
             "</untrusted-agent-plan>",
@@ -282,3 +290,10 @@ def _is_safe_extract_url(url: str) -> bool:
     except ValueError:
         return True
     return not (address.is_private or address.is_loopback or address.is_link_local)
+
+
+def _source_score(value: object) -> float:
+    try:
+        return float(value) if value is not None else 0.0
+    except (TypeError, ValueError):
+        return 0.0
